@@ -92,15 +92,20 @@ def execute_code(code: str, name: str, discord: DiscordNotifier = None) -> str:
 
     output_buf = io.StringIO()
 
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    if project_dir not in sys.path:
-        sys.path.insert(0, project_dir)
-    venv_sp = os.path.join(project_dir, ".venv", "lib")
+    # Add install dir + its venv to sys.path (for claude_code, scraper, etc.)
+    install_dir = os.path.dirname(os.path.abspath(__file__))
+    if install_dir not in sys.path:
+        sys.path.insert(0, install_dir)
+    venv_sp = os.path.join(install_dir, ".venv", "lib")
     if os.path.isdir(venv_sp):
         import glob as g
         for sp in g.glob(os.path.join(venv_sp, "python*", "site-packages")):
             if sp not in sys.path:
                 sys.path.insert(0, sp)
+    # Add CWD to sys.path so scripts can import local modules
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
 
     had_error = False
     try:
@@ -317,6 +322,12 @@ def main():
 
     # Load configuration
     config_path = args.config
+    if not os.path.exists(config_path) and args.run and config_path == "config.json":
+        # Auto-detect config.json from script's directory
+        script_dir = os.path.dirname(os.path.abspath(args.run))
+        candidate = os.path.join(script_dir, "config.json")
+        if os.path.exists(candidate):
+            config_path = candidate
     if not os.path.exists(config_path):
         log("SYSTEM", f"config.json not found at: {os.path.abspath(config_path)}")
         log("SYSTEM", "Using default configuration. Create config.json in project directory or use --config.")
@@ -360,6 +371,10 @@ def main():
         if not os.path.exists(args.run):
             log("SYSTEM", f"File not found: {args.run}")
             sys.exit(1)
+        # Change CWD to script's directory so relative paths resolve correctly
+        script_dir = os.path.dirname(os.path.abspath(args.run))
+        os.chdir(script_dir)
+        log("SYSTEM", f"Working dir: {script_dir}")
         with open(args.run, "r", encoding="utf-8") as f:
             code = f.read()
         log("SYSTEM", f"Running: {args.run}")
@@ -368,6 +383,11 @@ def main():
         return
 
     # === Mode: scheduler loop ===
+    # Change CWD to config directory so job code with relative paths works
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    os.chdir(config_dir)
+    log("SYSTEM", f"Working dir: {config_dir}")
+
     jobs = load_jobs_from_config(cfg)
     scheduler = Scheduler()
 

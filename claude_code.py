@@ -1,6 +1,7 @@
 """ClaudeCode class for communicating with the Claude Code CLI."""
 
 import json
+import os
 import subprocess
 import threading
 import uuid
@@ -162,6 +163,8 @@ class ClaudeCode:
 
     def _run_subprocess(self, cmd: list[str]) -> ClaudeResponse:
         """Run subprocess and return ClaudeResponse."""
+        # Remove CLAUDECODE env var so nested claude CLI calls are allowed
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
         try:
             result = subprocess.run(
                 cmd,
@@ -169,6 +172,7 @@ class ClaudeCode:
                 text=True,
                 timeout=self.timeout,
                 cwd=self.working_dir,
+                env=env,
             )
             if result.returncode != 0 and result.stderr.strip():
                 return ClaudeResponse(

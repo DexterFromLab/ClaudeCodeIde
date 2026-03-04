@@ -512,8 +512,8 @@ class SchedulerTab(ttk.Frame):
         self._tick()
 
     def _build_ui(self):
-        # --- Top panel: adding tasks ---
-        add_frame = ttk.LabelFrame(self, text="New task")
+        # --- Top panel: adding/editing tasks ---
+        add_frame = ttk.LabelFrame(self, text="Task settings")
         add_frame.pack(fill=tk.X, padx=4, pady=4)
 
         # Name
@@ -553,8 +553,11 @@ class SchedulerTab(ttk.Frame):
         # Buttons
         btn_row = ttk.Frame(add_frame)
         btn_row.pack(fill=tk.X, padx=4, pady=(2, 4))
-        ttk.Button(btn_row, text="Add to schedule", command=self._add_job).pack(side=tk.LEFT, padx=(0, 4))
+        self._add_btn_var = tk.StringVar(value="Add to schedule")
+        self._add_btn = ttk.Button(btn_row, textvariable=self._add_btn_var, command=self._add_or_update_job)
+        self._add_btn.pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btn_row, text="Run now", command=self._run_now).pack(side=tk.LEFT)
+        self._editing_job_name: str | None = None
 
         # --- Task list ---
         list_frame = ttk.LabelFrame(self, text="Scheduled tasks")
@@ -578,10 +581,13 @@ class SchedulerTab(ttk.Frame):
                          fieldbackground="#1e1e2e", rowheight=22)
         style.configure("Treeview.Heading", background="#313244", foreground="#cdd6f4")
 
+        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+
         tree_btns = ttk.Frame(list_frame)
         tree_btns.pack(fill=tk.X, padx=4, pady=(0, 4))
         ttk.Button(tree_btns, text="Pause/Resume", command=self._toggle_selected).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(tree_btns, text="Remove", command=self._remove_selected).pack(side=tk.LEFT)
+        ttk.Button(tree_btns, text="Remove", command=self._remove_selected).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(tree_btns, text="Deselect", command=self._deselect).pack(side=tk.LEFT)
 
         # --- Execution log ---
         log_frame = ttk.LabelFrame(self, text="Execution log")
@@ -648,6 +654,48 @@ class SchedulerTab(ttk.Frame):
             ttk.Entry(self.params_frame, textvariable=self.min_var, width=3,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
 
+    def _on_tree_select(self, event=None):
+        """Load selected job's settings into the form fields."""
+        sel = self.tree.selection()
+        if not sel:
+            return
+        name = self.tree.item(sel[0])["values"][0]
+        job = next((j for j in self.scheduler.jobs if j.name == name), None)
+        if not job:
+            return
+        self._editing_job_name = name
+        self._add_btn_var.set("Update task")
+
+        # Populate form
+        self.name_var.set(job.name)
+        self.mode_var.set(job.mode)
+
+        # Parse time
+        parts = job.time_str.split(":")
+        self.hour_var.set(parts[0] if len(parts) >= 1 else "00")
+        self.min_var.set(parts[1] if len(parts) >= 2 else "00")
+        self.date_var.set(job.date_str or datetime.now().strftime("%Y-%m-%d"))
+        self.interval_var.set(str(job.interval_min))
+        for i in range(7):
+            self.weekday_vars[i].set(i in job.weekdays)
+
+        # Rebuild mode-specific widgets so they show updated values
+        self._on_mode_change()
+
+    def _deselect(self):
+        """Clear selection and reset form to add mode."""
+        self.tree.selection_remove(*self.tree.selection())
+        self._editing_job_name = None
+        self._add_btn_var.set("Add to schedule")
+        self.name_var.set("")
+
+    def _add_or_update_job(self):
+        """Add a new job or update the currently selected one."""
+        if self._editing_job_name:
+            self._update_selected_job()
+        else:
+            self._add_job()
+
     def _add_job(self):
         name = self.name_var.get().strip()
         if not name:
@@ -682,6 +730,42 @@ class SchedulerTab(ttk.Frame):
         self._update_status()
         self._log(f"Added task '{name}' ({mode}), next: {job.next_run.strftime('%Y-%m-%d %H:%M:%S')}", "info")
         self.name_var.set("")
+
+    def _update_selected_job(self):
+        """Update the currently selected job with form values."""
+        old_name = self._editing_job_name
+        job = next((j for j in self.scheduler.jobs if j.name == old_name), None)
+        if not job:
+            return
+
+        new_name = self.name_var.get().strip()
+        if not new_name:
+            messagebox.showwarning("Scheduler", "Enter a task name.")
+            return
+        # Check name conflict (if renamed)
+        if new_name != old_name and any(j.name == new_name for j in self.scheduler.jobs):
+            messagebox.showwarning("Scheduler", f"Task '{new_name}' already exists.")
+            return
+
+        job.name = new_name
+        job.mode = self.mode_var.get()
+        job.time_str = f"{self.hour_var.get().zfill(2)}:{self.min_var.get().zfill(2)}"
+        job.date_str = self.date_var.get().strip()
+        try:
+            job.interval_min = int(self.interval_var.get())
+        except ValueError:
+            job.interval_min = 30
+        job.weekdays = [i for i, v in enumerate(self.weekday_vars) if v.get()]
+        job.code = self.python_panel.editor.get("1.0", tk.END).strip()
+        job.next_run = self.scheduler._calculate_next_run(job)
+
+        self._refresh_tree()
+        self._update_status()
+        self._log(f"Updated task '{new_name}' ({job.mode})", "info")
+
+        # Reset to add mode
+        self._editing_job_name = None
+        self._add_btn_var.set("Add to schedule")
 
     def _run_now(self):
         code = self.python_panel.editor.get("1.0", tk.END).strip()
@@ -1516,8 +1600,14 @@ class App(tk.Tk):
         self.geometry("1500x850")
         self.minsize(1000, 550)
 
-        # ConfigManager - default path next to scripts
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+        # ConfigManager - check for last loaded project config first
+        install_dir = os.path.dirname(os.path.abspath(__file__))
+        self._state_file = os.path.join(install_dir, ".last_project")
+        last_project = self._read_last_project()
+        if last_project and os.path.isfile(last_project):
+            config_path = last_project
+        else:
+            config_path = os.path.join(install_dir, "config.json")
         self._config_manager = ConfigManager(config_path)
 
         # Dark theme
@@ -1580,9 +1670,52 @@ class App(tk.Tk):
 
         self.left_panel.claude_tab.input_entry.focus_set()
 
-        # Auto-load config.json if it exists
+        # Auto-load config - if it's a remembered project, do full load with CWD + script
         if os.path.exists(config_path):
-            self._load_config(silent=True)
+            if last_project and config_path == last_project:
+                self._load_config_from_startup(config_path)
+            else:
+                self._load_config(silent=True)
+
+    def _read_last_project(self) -> str | None:
+        """Read last loaded config path from state file."""
+        try:
+            with open(self._state_file, "r") as f:
+                path = f.read().strip()
+            return path if path else None
+        except (FileNotFoundError, OSError):
+            return None
+
+    def _save_last_project(self, path: str):
+        """Persist last loaded config path to state file."""
+        try:
+            with open(self._state_file, "w") as f:
+                f.write(os.path.abspath(path))
+        except OSError:
+            pass
+
+    def _load_config_from_startup(self, path: str):
+        """Silently load a project config on startup (CWD + script + tabs)."""
+        cm = ConfigManager(path)
+        self._config_manager = cm
+        self.left_panel.context_tab.load_from_config(cm)
+        self.left_panel.discord_tab.load_from_config(cm)
+        self.left_panel.scheduler_tab.load_from_config(cm)
+        config_dir = os.path.dirname(os.path.abspath(path))
+        os.chdir(config_dir)
+        try:
+            import re as _re
+            cfg = cm.load()
+            for job in cfg.get("scheduler_jobs", []):
+                code = job.get("code", "")
+                m = _re.search(r"""open\s*\(\s*['"](.+?\.py)['"]\s*\)""", code)
+                if m:
+                    script_path = os.path.join(config_dir, m.group(1))
+                    if os.path.isfile(script_path):
+                        self.python_panel._load_py_file(script_path)
+                        break
+        except Exception:
+            pass
 
     def _on_insert_to_editor(self, event=None):
         content = self.left_panel.scraper_tab.result_text.get("1.0", tk.END).strip()
@@ -1641,6 +1774,7 @@ class App(tk.Tk):
         if path:
             cm = ConfigManager(path)
             self._config_manager = cm
+            self._save_last_project(path)
             self.left_panel.context_tab.save_to_config(cm)
             self.left_panel.discord_tab.save_to_config(cm)
             self.left_panel.scheduler_tab.save_to_config(cm)
@@ -1656,6 +1790,7 @@ class App(tk.Tk):
             return
         cm = ConfigManager(path)
         self._config_manager = cm
+        self._save_last_project(path)
         self.left_panel.context_tab.load_from_config(cm)
         self.left_panel.discord_tab.load_from_config(cm)
         self.left_panel.scheduler_tab.load_from_config(cm)
