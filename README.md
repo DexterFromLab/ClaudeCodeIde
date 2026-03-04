@@ -13,6 +13,7 @@ Built in Python (tkinter). Dark theme, two panels: tools on the left, Python edi
 - **Discord** — webhook notifications (scheduler results, Claude responses)
 - **Python Editor** — with syntax highlighting, output console, F5 to run
 - **CLI** — console mode (`automate`) for running scripts and scheduler without GUI
+- **Project config loading** — open a project's `config.json` to load settings + linked script into the editor
 
 ## Requirements
 
@@ -54,6 +55,16 @@ bash uninstall.sh
 automate-gui
 ```
 
+### Opening a project
+
+Use **Open** (Ctrl+O) and select a project's `config.json` file. The IDE will:
+- Load all settings (scheduler, Discord, context keeper) into the GUI tabs
+- Automatically find and open the script referenced in the scheduler job (e.g. `exec(open('analyse.py').read())`)
+- Set the working directory to the project folder
+- Future saves (Ctrl+S) will write back to both the script and config
+
+This allows the IDE to act as a launcher for any project that follows the `config.json` + script convention.
+
 ### CLI — one-time script execution
 
 ```bash
@@ -79,8 +90,10 @@ automate --config ~/other-project/config.json
 | Shortcut | Action |
 |----------|--------|
 | `F5` | Run code from editor |
-| `Ctrl+S` | Save file |
-| `Ctrl+O` | Open file |
+| `Ctrl+S` | Save script + config |
+| `Ctrl+O` | Open file (`.py` or `.json` config) |
+| `Ctrl+Shift+S` | Save config only |
+| `Ctrl+Shift+L` | Reload config |
 
 ## File structure
 
@@ -120,3 +133,7 @@ print(page.markdown)
 1. Discord → Channel Settings → Integrations → Webhook → New → Copy URL
 2. Paste the URL in the Discord tab in IDE (or in `config.json`)
 3. Click "Test" (GUI) or check CLI logs
+
+## Projects built on ClaudeCodeIde
+
+- **[Stock Analyser Signal](https://github.com/DexterFromLab/stock-analyser-signal)** — automated NASDAQ market analysis tool that produces scored buy/sell recommendations with bilingual Discord reports

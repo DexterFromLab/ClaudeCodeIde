@@ -1278,6 +1278,8 @@ class PythonPanel(ttk.Frame):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self._on_json_open = None  # callback set by App for config loading
+        self._current_file = None  # path of the currently loaded .py file
         self._build_ui()
 
     def _build_ui(self):
@@ -1288,7 +1290,8 @@ class PythonPanel(ttk.Frame):
 
         self.run_btn = ttk.Button(toolbar, text="Run (F5)", command=self.run_code)
         self.run_btn.pack(side=tk.RIGHT, padx=(4, 0))
-        ttk.Button(toolbar, text="Save", command=self.save_file).pack(side=tk.RIGHT, padx=(4, 0))
+        self.save_btn = ttk.Button(toolbar, text="Save", command=self.save_file)
+        self.save_btn.pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(toolbar, text="Open", command=self.open_file).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(toolbar, text="Clear", command=self.clear_output).pack(side=tk.RIGHT, padx=(4, 0))
 
@@ -1457,19 +1460,42 @@ class PythonPanel(ttk.Frame):
         self.output.configure(state=tk.DISABLED)
 
     def open_file(self):
-        path = filedialog.askopenfilename(filetypes=[("Python", "*.py"), ("All", "*.*")])
-        if path:
-            with open(path, "r") as f:
-                self.editor.delete("1.0", tk.END)
-                self.editor.insert("1.0", f.read())
-            self._update_line_numbers()
-            self._highlight_syntax()
+        path = filedialog.askopenfilename(filetypes=[
+            ("Python & JSON", "*.py *.json"),
+            ("Python", "*.py"),
+            ("JSON config", "*.json"),
+            ("All", "*.*"),
+        ])
+        if not path:
+            return
+        if path.endswith(".json") and self._on_json_open:
+            self._on_json_open(path)
+            return
+        self._load_py_file(path)
+
+    def _load_py_file(self, path: str):
+        """Load a .py file into the editor and remember its path."""
+        with open(path, "r", encoding="utf-8") as f:
+            self.editor.delete("1.0", tk.END)
+            self.editor.insert("1.0", f.read())
+        self._current_file = path
+        self._update_line_numbers()
+        self._highlight_syntax()
 
     def save_file(self):
-        path = filedialog.asksaveasfilename(defaultextension=".py", filetypes=[("Python", "*.py"), ("All", "*.*")])
-        if path:
-            with open(path, "w") as f:
+        if self._current_file:
+            # Save directly to the known file
+            with open(self._current_file, "w", encoding="utf-8") as f:
                 f.write(self.editor.get("1.0", tk.END))
+        else:
+            path = filedialog.asksaveasfilename(
+                defaultextension=".py",
+                filetypes=[("Python", "*.py"), ("All", "*.*")],
+            )
+            if path:
+                self._current_file = path
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self.editor.get("1.0", tk.END))
 
     def insert_text(self, text):
         """Insert text at the end of the editor."""
@@ -1536,6 +1562,8 @@ class App(tk.Tk):
 
         self.python_panel = PythonPanel(paned)
         paned.add(self.python_panel, weight=1)
+        self.python_panel._on_json_open = lambda path: self._load_config_from(path)
+        self.python_panel.save_btn.configure(command=self._save_all)
 
         # Scheduler needs a reference to PythonPanel (to get code from editor)
         self.left_panel.init_scheduler(self.python_panel)
@@ -1545,7 +1573,7 @@ class App(tk.Tk):
 
         # Shortcuts
         self.bind("<F5>", lambda e: self.python_panel.run_code())
-        self.bind("<Control-s>", lambda e: self.python_panel.save_file())
+        self.bind("<Control-s>", lambda e: self._save_all())
         self.bind("<Control-o>", lambda e: self.python_panel.open_file())
         self.bind("<Control-Shift-S>", lambda e: self._save_config())
         self.bind("<Control-Shift-L>", lambda e: self._load_config())
@@ -1561,6 +1589,24 @@ class App(tk.Tk):
         if content:
             commented = "\n".join(f"# {line}" for line in content.split("\n")[:30])
             self.python_panel.insert_text(f"\n\n{commented}\n")
+
+    def _save_all(self):
+        """Save both script and config, with feedback in the output panel."""
+        saved = []
+        # Save script
+        self.python_panel.save_file()
+        if self.python_panel._current_file:
+            saved.append(self.python_panel._current_file)
+        # Save config
+        cm = self._config_manager
+        self.left_panel.context_tab.save_to_config(cm)
+        self.left_panel.discord_tab.save_to_config(cm)
+        self.left_panel.scheduler_tab.save_to_config(cm)
+        saved.append(cm.path)
+        # Feedback
+        self.python_panel._append_output(
+            f"Saved: {', '.join(saved)}\n", "success"
+        )
 
     def _save_config(self):
         """Save current settings to config.json."""
@@ -1585,28 +1631,62 @@ class App(tk.Tk):
 
     def _save_config_as(self):
         """Save configuration to a chosen file."""
+        initial_dir = os.path.dirname(self._config_manager.path)
         path = filedialog.asksaveasfilename(
+            initialdir=initial_dir,
+            initialfile="config.json",
             defaultextension=".json",
             filetypes=[("JSON", "*.json"), ("All", "*.*")],
         )
         if path:
             cm = ConfigManager(path)
+            self._config_manager = cm
             self.left_panel.context_tab.save_to_config(cm)
             self.left_panel.discord_tab.save_to_config(cm)
             self.left_panel.scheduler_tab.save_to_config(cm)
             messagebox.showinfo("Configuration", f"Saved to: {path}")
 
-    def _load_config_from(self):
-        """Load configuration from a chosen file."""
-        path = filedialog.askopenfilename(
-            filetypes=[("JSON", "*.json"), ("All", "*.*")],
-        )
-        if path:
-            cm = ConfigManager(path)
-            self.left_panel.context_tab.load_from_config(cm)
-            self.left_panel.discord_tab.load_from_config(cm)
-            self.left_panel.scheduler_tab.load_from_config(cm)
-            messagebox.showinfo("Configuration", f"Loaded from: {path}")
+    def _load_config_from(self, path=None):
+        """Load configuration from a chosen file and open the linked script."""
+        if not path:
+            path = filedialog.askopenfilename(
+                filetypes=[("JSON", "*.json"), ("All", "*.*")],
+            )
+        if not path:
+            return
+        cm = ConfigManager(path)
+        self._config_manager = cm
+        self.left_panel.context_tab.load_from_config(cm)
+        self.left_panel.discord_tab.load_from_config(cm)
+        self.left_panel.scheduler_tab.load_from_config(cm)
+
+        # Change CWD to config directory so scripts resolve correctly
+        config_dir = os.path.dirname(os.path.abspath(path))
+        os.chdir(config_dir)
+
+        # Try to find and load the script referenced in the first scheduler job
+        script_loaded = False
+        try:
+            import re as _re
+            cfg = cm.load()
+            for job in cfg.get("scheduler_jobs", []):
+                code = job.get("code", "")
+                # Match exec(open('file.py').read()) or exec(open("file.py").read())
+                m = _re.search(r"""open\s*\(\s*['"](.+?\.py)['"]\s*\)""", code)
+                if m:
+                    script_path = os.path.join(config_dir, m.group(1))
+                    if os.path.isfile(script_path):
+                        self.python_panel._load_py_file(script_path)
+                        script_loaded = True
+                        break
+        except Exception:
+            pass
+
+        info = f"Loaded from: {path}"
+        if script_loaded:
+            info += f"\nScript: {script_path}"
+        info += f"\nWorking dir: {config_dir}"
+        messagebox.showinfo("Configuration", info)
 
 
 def main():
