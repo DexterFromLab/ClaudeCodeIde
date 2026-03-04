@@ -316,10 +316,15 @@ def main():
     args = parser.parse_args()
 
     # Wczytaj konfiguracje
-    cm = ConfigManager(args.config)
+    config_path = args.config
+    if not os.path.exists(config_path):
+        log("SYSTEM", f"config.json nie znaleziony w: {os.path.abspath(config_path)}")
+        log("SYSTEM", "Uzyto domyslnej konfiguracji. Utworz config.json w katalogu projektu lub uzyj --config.")
+
+    cm = ConfigManager(config_path)
     cfg = cm.load()
 
-    log("SYSTEM", f"Config loaded from: {os.path.abspath(args.config)}")
+    log("SYSTEM", f"Config: {os.path.abspath(config_path)}")
 
     # --- Discord ---
     discord = None
