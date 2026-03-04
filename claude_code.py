@@ -2,11 +2,25 @@
 
 import json
 import os
+import shutil
 import subprocess
 import threading
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
+
+
+def _find_claude_binary() -> str:
+    """Find the best available claude CLI binary.
+
+    Prefers ~/.local/bin/claude (user install, typically newer)
+    over system-wide /usr/local/bin/claude.
+    """
+    user_bin = Path.home() / ".local" / "bin" / "claude"
+    if user_bin.is_file() and os.access(user_bin, os.X_OK):
+        return str(user_bin)
+    return shutil.which("claude") or "claude"
 
 
 @dataclass
@@ -114,7 +128,7 @@ class ClaudeCode:
         allowed_tools: Optional[list[str]] = None,
         max_budget_usd: Optional[float] = None,
     ) -> list[str]:
-        cmd = ["claude", "--print", message]
+        cmd = [_find_claude_binary(), "--print", message]
 
         fmt = output_format
         cmd += ["--output-format", fmt]
