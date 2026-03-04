@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from claude_code import ClaudeCode, ClaudeResponse
+from config_manager import ConfigManager
+from discord_notifier import DiscordNotifier
 
 
 class LiveWriter(io.TextIOBase):
@@ -808,6 +810,32 @@ class SchedulerTab(ttk.Frame):
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
 
+    # --- Konfiguracja JSON ---
+
+    def save_to_config(self, cm: ConfigManager):
+        cm.save_scheduler_jobs(self.scheduler.jobs)
+
+    def load_from_config(self, cm: ConfigManager):
+        jobs_data = cm.get_scheduler_jobs()
+        # Usun istniejace joby
+        self.scheduler.jobs.clear()
+        for jd in jobs_data:
+            job = ScheduledJob(
+                name=jd.get("name", "unnamed"),
+                code=jd.get("code", ""),
+                mode=jd.get("mode", "interval"),
+                time_str=jd.get("time_str", "00:00"),
+                date_str=jd.get("date_str", ""),
+                interval_min=jd.get("interval_min", 30),
+                weekdays=jd.get("weekdays", []),
+                active=jd.get("active", True),
+            )
+            self.scheduler.add_job(job)
+        self._refresh_tree()
+        self._update_status()
+        if jobs_data:
+            self._log(f"Wczytano {len(jobs_data)} zadan z konfiguracji", "info")
+
 
 # ============================================================
 #  Context Keeper - automatyczne przypomnienia kontekstu
@@ -1024,6 +1052,35 @@ class ContextKeeperTab(ttk.Frame):
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
 
+    # --- Konfiguracja JSON ---
+
+    def save_to_config(self, cm: ConfigManager):
+        prompt = self.prompt_text.get("1.0", tk.END).strip()
+        try:
+            interval = int(self.interval_var.get())
+        except ValueError:
+            interval = 100
+        cm.save_context_keeper(
+            active=self.active_var.get(),
+            prompt=prompt,
+            auto_first=self.auto_first_var.get(),
+            auto_every=self.auto_every_var.get(),
+            auto_remind=self.auto_remind_var.get(),
+            interval=interval,
+        )
+
+    def load_from_config(self, cm: ConfigManager):
+        c = cm.get_context_keeper()
+        self.active_var.set(c.get("active", True))
+        prompt = c.get("prompt", "")
+        if prompt:
+            self.prompt_text.delete("1.0", tk.END)
+            self.prompt_text.insert("1.0", prompt)
+        self.auto_first_var.set(c.get("auto_first", True))
+        self.auto_every_var.set(c.get("auto_every", False))
+        self.auto_remind_var.set(c.get("auto_remind", True))
+        self.interval_var.set(str(c.get("interval", 100)))
+
 
 # ============================================================
 #  Discord - powiadomienia webhook
@@ -1034,6 +1091,7 @@ class DiscordTab(ttk.Frame):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self._notifier = None  # DiscordNotifier - tworzony dynamicznie
         self._build_ui()
         # Listener na odpowiedzi Claude
         ClaudeCode.add_traffic_listener(self._on_claude_traffic)
@@ -1095,52 +1153,27 @@ class DiscordTab(ttk.Frame):
         self.log_text.tag_configure("error", foreground="#f38ba8")
         self.log_text.tag_configure("info", foreground="#f9e2af")
 
-    def send_message(self, text: str):
-        """Wyslij wiadomosc na Discord. Thread-safe, mozna wolac z dowolnego watku."""
+    def _get_notifier(self) -> DiscordNotifier | None:
+        """Zwroc lub utworz DiscordNotifier na bazie biezacych ustawien."""
         if not self.active_var.get():
-            return
+            return None
         url = self.url_var.get().strip()
         if not url:
-            return
-        threading.Thread(target=self._do_send, args=(url, text), daemon=True).start()
+            return None
+        # Przetworz on_log tak zeby uzywal self.after() do aktualizacji GUI
+        def on_log(msg, level):
+            tag = {"ok": "ok", "error": "error"}.get(level, "info")
+            self.after(0, self._log, f"[{level.upper()}] {msg}", tag)
+        if self._notifier is None or self._notifier.webhook_url != url:
+            self._notifier = DiscordNotifier(webhook_url=url, active=True, on_log=on_log)
+        self._notifier.active = True
+        return self._notifier
 
-    def _do_send(self, webhook_url: str, text: str):
-        """Wysyla HTTP POST na webhook. Dzieli dlugie wiadomosci na chunki."""
-        # Discord limit: 2000 znakow
-        chunks = []
-        while text:
-            if len(text) <= 2000:
-                chunks.append(text)
-                break
-            # Szukaj ostatniego newline przed limitem
-            cut = text[:2000].rfind("\n")
-            if cut < 100:
-                cut = 2000
-            chunks.append(text[:cut])
-            text = text[cut:].lstrip("\n")
-
-        for i, chunk in enumerate(chunks):
-            try:
-                payload = json.dumps({"content": chunk}).encode("utf-8")
-                req = urllib.request.Request(
-                    webhook_url,
-                    data=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "User-Agent": "ClaudeCodeIDE/1.0",
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    status = resp.status
-                if len(chunks) > 1:
-                    self.after(0, self._log, f"[OK] Wyslano czesc {i+1}/{len(chunks)} ({status})", "ok")
-                else:
-                    self.after(0, self._log, f"[OK] Wyslano ({status}): {chunk[:80]}...", "ok")
-            except urllib.error.HTTPError as e:
-                self.after(0, self._log, f"[BLAD] HTTP {e.code}: {e.reason}", "error")
-            except Exception as e:
-                self.after(0, self._log, f"[BLAD] {e}", "error")
+    def send_message(self, text: str):
+        """Wyslij wiadomosc na Discord. Thread-safe, mozna wolac z dowolnego watku."""
+        notifier = self._get_notifier()
+        if notifier:
+            notifier.send(text)
 
     def _test_webhook(self):
         url = self.url_var.get().strip()
@@ -1149,11 +1182,9 @@ class DiscordTab(ttk.Frame):
             return
         self._log("Wysylam test...", "info")
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        threading.Thread(
-            target=self._do_send,
-            args=(url, f"Test z Claude Code IDE [{ts}]"),
-            daemon=True,
-        ).start()
+        notifier = self._get_notifier()
+        if notifier:
+            notifier.send(f"Test z Claude Code IDE [{ts}]")
 
     def _send_manual(self):
         msg = self.msg_var.get().strip()
@@ -1166,16 +1197,17 @@ class DiscordTab(ttk.Frame):
         """Listener Claude traffic - forward odpowiedzi na Discord."""
         if direction == "recv" and self.notify_claude_var.get():
             model = meta.get("model", "")
-            preview = text[:1900]
-            self.send_message(f"**Claude{' (' + model + ')' if model else ''}:**\n{preview}")
+            notifier = self._get_notifier()
+            if notifier:
+                notifier.notify_claude(text, model)
 
     def notify_scheduler_result(self, job_name: str, output: str):
         """Wolane przez Scheduler po wykonaniu zadania."""
         if not self.notify_scheduler_var.get():
             return
-        ts = datetime.now().strftime("%H:%M:%S")
-        msg = f"**Scheduler [{job_name}] {ts}:**\n{output[:1900]}"
-        self.send_message(msg)
+        notifier = self._get_notifier()
+        if notifier:
+            notifier.notify_scheduler(job_name, output)
 
     def _log(self, msg: str, tag: str = None):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -1183,6 +1215,23 @@ class DiscordTab(ttk.Frame):
         self.log_text.insert(tk.END, f"[{ts}] {msg}\n", tag)
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
+
+    # --- Konfiguracja JSON ---
+
+    def save_to_config(self, cm: ConfigManager):
+        cm.save_discord(
+            active=self.active_var.get(),
+            webhook_url=self.url_var.get().strip(),
+            notify_scheduler=self.notify_scheduler_var.get(),
+            notify_claude=self.notify_claude_var.get(),
+        )
+
+    def load_from_config(self, cm: ConfigManager):
+        d = cm.get_discord()
+        self.active_var.set(d.get("active", True))
+        self.url_var.set(d.get("webhook_url", ""))
+        self.notify_scheduler_var.set(d.get("notify_scheduler", False))
+        self.notify_claude_var.set(d.get("notify_claude", False))
 
 
 # ============================================================
@@ -1441,6 +1490,10 @@ class App(tk.Tk):
         self.geometry("1500x850")
         self.minsize(1000, 550)
 
+        # ConfigManager - domyslna sciezka obok skryptow
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+        self._config_manager = ConfigManager(config_path)
+
         # Ciemny motyw
         self.configure(bg="#1e1e2e")
         style = ttk.Style()
@@ -1458,6 +1511,21 @@ class App(tk.Tk):
         style.map("TNotebook.Tab", background=[("selected", "#45475a")])
         style.configure("TRadiobutton", background="#1e1e2e", foreground="#cdd6f4")
         style.configure("TCheckbutton", background="#1e1e2e", foreground="#cdd6f4")
+
+        # Menu
+        menubar = tk.Menu(self, bg="#313244", fg="#cdd6f4", activebackground="#45475a",
+                          activeforeground="#cdd6f4")
+        file_menu = tk.Menu(menubar, tearoff=0, bg="#313244", fg="#cdd6f4",
+                            activebackground="#45475a", activeforeground="#cdd6f4")
+        file_menu.add_command(label="Zapisz konfiguracje", command=self._save_config,
+                              accelerator="Ctrl+Shift+S")
+        file_menu.add_command(label="Wczytaj konfiguracje", command=self._load_config,
+                              accelerator="Ctrl+Shift+L")
+        file_menu.add_separator()
+        file_menu.add_command(label="Zapisz konfiguracje jako...", command=self._save_config_as)
+        file_menu.add_command(label="Wczytaj konfiguracje z...", command=self._load_config_from)
+        menubar.add_cascade(label="Plik", menu=file_menu)
+        self.config(menu=menubar)
 
         # Layout
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -1479,14 +1547,66 @@ class App(tk.Tk):
         self.bind("<F5>", lambda e: self.python_panel.run_code())
         self.bind("<Control-s>", lambda e: self.python_panel.save_file())
         self.bind("<Control-o>", lambda e: self.python_panel.open_file())
+        self.bind("<Control-Shift-S>", lambda e: self._save_config())
+        self.bind("<Control-Shift-L>", lambda e: self._load_config())
 
         self.left_panel.claude_tab.input_entry.focus_set()
+
+        # Auto-load config.json jesli istnieje
+        if os.path.exists(config_path):
+            self._load_config(silent=True)
 
     def _on_insert_to_editor(self, event=None):
         content = self.left_panel.scraper_tab.result_text.get("1.0", tk.END).strip()
         if content:
             commented = "\n".join(f"# {line}" for line in content.split("\n")[:30])
             self.python_panel.insert_text(f"\n\n{commented}\n")
+
+    def _save_config(self):
+        """Zapisz biezace ustawienia do config.json."""
+        cm = self._config_manager
+        self.left_panel.context_tab.save_to_config(cm)
+        self.left_panel.discord_tab.save_to_config(cm)
+        self.left_panel.scheduler_tab.save_to_config(cm)
+        messagebox.showinfo("Konfiguracja", f"Zapisano do: {cm.path}")
+
+    def _load_config(self, silent: bool = False):
+        """Wczytaj ustawienia z config.json."""
+        cm = self._config_manager
+        if not os.path.exists(cm.path):
+            if not silent:
+                messagebox.showwarning("Konfiguracja", f"Plik nie istnieje: {cm.path}")
+            return
+        self.left_panel.context_tab.load_from_config(cm)
+        self.left_panel.discord_tab.load_from_config(cm)
+        self.left_panel.scheduler_tab.load_from_config(cm)
+        if not silent:
+            messagebox.showinfo("Konfiguracja", f"Wczytano z: {cm.path}")
+
+    def _save_config_as(self):
+        """Zapisz konfiguracje do wybranego pliku."""
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("Wszystkie", "*.*")],
+        )
+        if path:
+            cm = ConfigManager(path)
+            self.left_panel.context_tab.save_to_config(cm)
+            self.left_panel.discord_tab.save_to_config(cm)
+            self.left_panel.scheduler_tab.save_to_config(cm)
+            messagebox.showinfo("Konfiguracja", f"Zapisano do: {path}")
+
+    def _load_config_from(self):
+        """Wczytaj konfiguracje z wybranego pliku."""
+        path = filedialog.askopenfilename(
+            filetypes=[("JSON", "*.json"), ("Wszystkie", "*.*")],
+        )
+        if path:
+            cm = ConfigManager(path)
+            self.left_panel.context_tab.load_from_config(cm)
+            self.left_panel.discord_tab.load_from_config(cm)
+            self.left_panel.scheduler_tab.load_from_config(cm)
+            messagebox.showinfo("Konfiguracja", f"Wczytano z: {path}")
 
 
 def main():

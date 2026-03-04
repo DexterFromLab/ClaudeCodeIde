@@ -1,0 +1,17 @@
+{
+  "context_keeper": {
+    "active": true,
+    "prompt": "",
+    "auto_first": true,
+    "auto_every": false,
+    "auto_remind": true,
+    "interval": 100
+  },
+  "discord": {
+    "active": true,
+    "webhook_url": "",
+    "notify_scheduler": false,
+    "notify_claude": false
+  },
+  "scheduler_jobs": []
+}
