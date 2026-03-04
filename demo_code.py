@@ -1,10 +1,10 @@
 """
 === Claude Code IDE + Scraper Demo ===
-Nacisnij F5 aby uruchomic!
+Press F5 to run!
 
-Scraper dziala LOKALNIE na Twoim komputerze.
-Bez API keys, bez tokenow, bez limitow.
-Uzywa przegladarki Chromium przez Crawl4AI.
+The scraper runs LOCALLY on your machine.
+No API keys, no tokens, no limits.
+Uses Chromium browser via Crawl4AI.
 """
 import time
 from scraper import Scraper
@@ -14,34 +14,34 @@ scraper = Scraper()
 claude = ClaudeCode()
 
 # ==================================================
-# 1. SCRAPE - pobierz tresc strony
+# 1. SCRAPE - fetch page content
 # ==================================================
 print("=" * 50)
-print("  KROK 1: Scrapuje strone lokalnie")
+print("  STEP 1: Scraping page locally")
 print("=" * 50)
 print()
 
 url = "https://docs.python.org/3/whatsnew/3.12.html"
 print(f"URL: {url}")
-print("Otwieram przegladarke i scrapuje...\n")
+print("Opening browser and scraping...\n")
 
 t0 = time.time()
 page = scraper.scrape(url)
 
 if page.is_error:
-    print(f"Blad: {page.error_msg}")
+    print(f"Error: {page.error_msg}")
 else:
     print(page.summary)
     print()
-    print("--- Pierwsze 500 znakow ---")
+    print("--- First 500 characters ---")
     print(page.markdown[:500])
     print("...\n")
 
 # ==================================================
-# 2. MULTI-SCRAPE - wiele stron na raz
+# 2. MULTI-SCRAPE - multiple pages at once
 # ==================================================
 print("=" * 50)
-print("  KROK 2: Scrapuje 3 strony na raz")
+print("  STEP 2: Scraping 3 pages at once")
 print("=" * 50)
 print()
 
@@ -50,7 +50,7 @@ urls = [
     "https://httpbin.org/html",
     "https://www.python.org",
 ]
-print(f"Scrapuje {len(urls)} stron rownolegle...\n")
+print(f"Scraping {len(urls)} pages in parallel...\n")
 
 t0 = time.time()
 results = scraper.scrape_many(urls)
@@ -58,44 +58,44 @@ elapsed = time.time() - t0
 
 for r in results:
     if r.is_error:
-        print(f"  BLAD {r.url}: {r.error_msg}")
+        print(f"  ERROR {r.url}: {r.error_msg}")
     else:
         print(f"  OK {r.url}")
-        print(f"     Tytul: {r.title}")
-        print(f"     Rozmiar: {len(r.markdown)} zn")
-print(f"\nLacznie w {elapsed:.1f}s\n")
+        print(f"     Title: {r.title}")
+        print(f"     Size: {len(r.markdown)} chars")
+print(f"\nTotal in {elapsed:.1f}s\n")
 
 # ==================================================
-# 3. SCRAPE + CLAUDE - scrapuj i analizuj
+# 3. SCRAPE + CLAUDE - scrape and analyze
 # ==================================================
 print("=" * 50)
-print("  KROK 3: Scrape + analiza przez Claude")
+print("  STEP 3: Scrape + analysis by Claude")
 print("=" * 50)
 print()
 
 if page.is_error:
-    print("Pomijam - poprzedni scrape sie nie udal.")
+    print("Skipping - previous scrape failed.")
 else:
-    print("Pytam Claude o podsumowanie strony...")
-    print("(to moze potrwac ~30-60 sekund)\n")
+    print("Asking Claude to summarize the page...")
+    print("(this may take ~30-60 seconds)\n")
 
     t0 = time.time()
     resp = claude.scrape_and_ask(
         url,
-        "Wymien 5 najwazniejszych nowosci z tej strony. "
-        "Dla kazdej podaj krotki opis."
+        "List the 5 most important new features from this page. "
+        "Provide a brief description for each."
     )
     elapsed = time.time() - t0
 
-    print(f"Odpowiedz Claude ({elapsed:.1f}s):\n")
+    print(f"Claude response ({elapsed:.1f}s):\n")
     print(resp.text)
 
-    # --- Wyslij analize na Discord ---
-    print("\nWysylam wynik na Discord...")
+    # --- Send analysis to Discord ---
+    print("\nSending result to Discord...")
     import json, urllib.request
-    webhook_url = ""  # <-- wklej tu swoj webhook URL z Discorda
+    webhook_url = ""  # <-- paste your Discord webhook URL here
     if webhook_url:
-        msg = f"**Analiza Python 3.12 ({elapsed:.1f}s):**\n{resp.text[:1900]}"
+        msg = f"**Python 3.12 Analysis ({elapsed:.1f}s):**\n{resp.text[:1900]}"
         payload = json.dumps({"content": msg}).encode("utf-8")
         req = urllib.request.Request(
             webhook_url, data=payload,
@@ -104,15 +104,15 @@ else:
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
-                print(f"Discord: wyslano! (HTTP {r.status})")
+                print(f"Discord: sent! (HTTP {r.status})")
         except Exception as e:
-            print(f"Discord: blad - {e}")
+            print(f"Discord: error - {e}")
     else:
-        print("Brak webhook URL - wklej go w zmiennej webhook_url w kodzie")
-        print("albo uzyj zakladki Discord w IDE (latwiej!)")
+        print("No webhook URL - paste it in the webhook_url variable in the code")
+        print("or use the Discord tab in the IDE (easier!)")
 
 print()
 print("=" * 50)
-print("  DEMO ZAKONCZONE!")
-print("  Bez zadnych API keys i tokenow :)")
+print("  DEMO COMPLETE!")
+print("  No API keys or tokens needed :)")
 print("=" * 50)

@@ -1,14 +1,14 @@
 #!/bin/bash
 # ============================================================
-#  Claude Code IDE — deinstalator
+#  Claude Code IDE — uninstaller
 # ============================================================
 
 set -euo pipefail
 
-echo "Odinstalowywanie Claude Code IDE..."
+echo "Uninstalling Claude Code IDE..."
 
 rm -rf ~/.local/share/claude-code-ide/
 rm -f ~/.local/bin/automate
 rm -f ~/.local/bin/automate-gui
 
-echo "Odinstalowano. Wszystkie pliki usuniete."
+echo "Uninstalled. All files removed."

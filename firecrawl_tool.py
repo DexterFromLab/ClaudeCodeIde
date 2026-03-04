@@ -1,11 +1,11 @@
-"""Wrapper Firecrawl do integracji z Claude Code IDE.
+"""Firecrawl wrapper for Claude Code IDE integration.
 
-Opakowuje firecrawl-py SDK w prosty interfejs do scrapowania,
-przeszukiwania i mapowania stron www.
+Wraps the firecrawl-py SDK in a simple interface for scraping,
+searching, and mapping web pages.
 
-Wymaga:
+Requirements:
     pip install firecrawl-py
-    + klucz API: https://firecrawl.dev/app/api-keys
+    + API key: https://firecrawl.dev/app/api-keys
 """
 
 import json
@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 @dataclass
 class ScrapeResult:
-    """Wynik scrapowania strony."""
+    """Result of scraping a page."""
     url: str
     markdown: str = ""
     title: str = ""
@@ -28,13 +28,13 @@ class ScrapeResult:
 
     def __str__(self):
         if self.is_error:
-            return f"[Blad: {self.error_msg}]"
+            return f"[Error: {self.error_msg}]"
         return self.markdown[:500] + "..." if len(self.markdown) > 500 else self.markdown
 
 
 @dataclass
 class SearchResult:
-    """Wynik wyszukiwania."""
+    """Result of a web search."""
     query: str
     results: list[dict] = field(default_factory=list)
     is_error: bool = False
@@ -42,8 +42,8 @@ class SearchResult:
 
     def __str__(self):
         if self.is_error:
-            return f"[Blad: {self.error_msg}]"
-        lines = [f"Wyniki dla: {self.query}\n"]
+            return f"[Error: {self.error_msg}]"
+        lines = [f"Results for: {self.query}\n"]
         for i, r in enumerate(self.results, 1):
             lines.append(f"{i}. {r.get('title', '?')}")
             lines.append(f"   {r.get('url', '')}")
@@ -56,7 +56,7 @@ class SearchResult:
 
 @dataclass
 class MapResult:
-    """Wynik mapowania URL-i strony."""
+    """Result of mapping URLs on a site."""
     url: str
     urls: list[str] = field(default_factory=list)
     is_error: bool = False
@@ -64,14 +64,14 @@ class MapResult:
 
     def __str__(self):
         if self.is_error:
-            return f"[Blad: {self.error_msg}]"
-        return f"Znaleziono {len(self.urls)} URL-i na {self.url}"
+            return f"[Error: {self.error_msg}]"
+        return f"Found {len(self.urls)} URLs on {self.url}"
 
 
 class Firecrawl:
-    """Prosty interfejs do Firecrawl API.
+    """Simple interface to the Firecrawl API.
 
-    Przyklad:
+    Example:
         fc = Firecrawl(api_key="fc-...")
         page = fc.scrape("https://example.com")
         print(page.markdown)
@@ -102,7 +102,7 @@ class Firecrawl:
     def _get_app(self):
         if not self._api_key:
             raise ValueError(
-                "Brak klucza API Firecrawl. Ustaw FIRECRAWL_API_KEY lub podaj api_key."
+                "Missing Firecrawl API key. Set FIRECRAWL_API_KEY or provide api_key."
             )
         if self._app is None:
             from firecrawl import FirecrawlApp
@@ -123,8 +123,8 @@ class Firecrawl:
         only_main_content: bool = True,
         wait_for: Optional[int] = None,
     ) -> ScrapeResult:
-        """Scrapuj pojedyncza strone. Zwraca markdown."""
-        self._emit_status(f"Scrapuje {url}...")
+        """Scrape a single page. Returns markdown."""
+        self._emit_status(f"Scraping {url}...")
         try:
             app = self._get_app()
             kwargs = {"only_main_content": only_main_content}
@@ -150,8 +150,8 @@ class Firecrawl:
         query: str,
         limit: int = 5,
     ) -> SearchResult:
-        """Wyszukaj w internecie. Zwraca liste wynikow."""
-        self._emit_status(f"Szukam: {query}...")
+        """Search the web. Returns list of results."""
+        self._emit_status(f"Searching: {query}...")
         try:
             app = self._get_app()
             data = app.search(query, limit=limit)
@@ -184,8 +184,8 @@ class Firecrawl:
         search: Optional[str] = None,
         limit: int = 100,
     ) -> MapResult:
-        """Odkryj wszystkie URL-e na stronie."""
-        self._emit_status(f"Mapuje {url}...")
+        """Discover all URLs on a site."""
+        self._emit_status(f"Mapping {url}...")
         try:
             app = self._get_app()
             kwargs = {"limit": limit}
@@ -202,7 +202,7 @@ class Firecrawl:
             return MapResult(url=url, is_error=True, error_msg=str(e))
 
     # ------------------------------------------------------------------ #
-    #  Crawl (synchroniczny - czeka na wynik)
+    #  Crawl (synchronous - waits for result)
     # ------------------------------------------------------------------ #
 
     def crawl(
@@ -211,8 +211,8 @@ class Firecrawl:
         limit: int = 10,
         max_depth: int = 2,
     ) -> list[ScrapeResult]:
-        """Crawluj cala strone (do limit podstron). Zwraca liste ScrapeResult."""
-        self._emit_status(f"Crawluje {url} (max {limit} stron)...")
+        """Crawl an entire site (up to limit subpages). Returns list of ScrapeResult."""
+        self._emit_status(f"Crawling {url} (max {limit} pages)...")
         try:
             app = self._get_app()
             job = app.crawl(url, limit=limit, max_discovery_depth=max_depth)
@@ -230,11 +230,11 @@ class Firecrawl:
             return [ScrapeResult(url=url, is_error=True, error_msg=str(e))]
 
     # ------------------------------------------------------------------ #
-    #  Async wrappers (do GUI)
+    #  Async wrappers (for GUI)
     # ------------------------------------------------------------------ #
 
     def scrape_async(self, url: str, callback: Callable[[ScrapeResult], None], **kwargs):
-        """Scrapuj asynchronicznie. Wynik przez callback."""
+        """Scrape asynchronously. Result via callback."""
         if self._busy:
             return
         self._busy = True
@@ -249,7 +249,7 @@ class Firecrawl:
         threading.Thread(target=worker, daemon=True).start()
 
     def search_async(self, query: str, callback: Callable[[SearchResult], None], **kwargs):
-        """Szukaj asynchronicznie. Wynik przez callback."""
+        """Search asynchronously. Result via callback."""
         if self._busy:
             return
         self._busy = True

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Claude Code IDE - Okno z Claude po lewej i edytorem Pythona po prawej.
-Zintegrowane z Crawl4AI do scrapowania stron www.
-Scheduler do uruchamiania kodu wg harmonogramu.
+Claude Code IDE - Claude on the left, Python editor on the right.
+Integrated with Crawl4AI for web scraping.
+Scheduler for running code on schedule.
 """
 
 import io
@@ -26,7 +26,7 @@ from discord_notifier import DiscordNotifier
 
 
 class LiveWriter(io.TextIOBase):
-    """Strumien ktory wysyla tekst do kolejki zamiast buforowac."""
+    """Stream that sends text to a queue instead of buffering."""
 
     def __init__(self, output_queue: queue.Queue, tag: str = ""):
         self._queue = output_queue
@@ -46,11 +46,11 @@ class LiveWriter(io.TextIOBase):
 
 
 # ============================================================
-#  Zakladka: Claude Code
+#  Tab: Claude Code
 # ============================================================
 
 class ClaudeTab(ttk.Frame):
-    """Konsola Claude Code."""
+    """Claude Code console."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -59,7 +59,7 @@ class ClaudeTab(ttk.Frame):
             on_response=self._on_response,
             on_error=self._on_error,
         )
-        # Queue + polling - niezawodny wzorzec dla tkinter + watki w tle
+        # Queue + polling - reliable pattern for tkinter + background threads
         self._traffic_queue = queue.Queue()
         ClaudeCode.add_traffic_listener(self._on_traffic)
         self._poll_traffic()
@@ -89,10 +89,10 @@ class ClaudeTab(ttk.Frame):
         self.input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         self.input_entry.bind("<Return>", self._on_send)
 
-        self.send_btn = ttk.Button(input_frame, text="Wyslij", command=self._on_send)
+        self.send_btn = ttk.Button(input_frame, text="Send", command=self._on_send)
         self.send_btn.pack(side=tk.RIGHT)
 
-        self._append_text("Wpisz wiadomosc do Claude Code.\n", "system")
+        self._append_text("Type a message for Claude Code.\n", "system")
 
     def _append_text(self, text, tag=None):
         self.chat.configure(state=tk.NORMAL)
@@ -109,17 +109,17 @@ class ClaudeTab(ttk.Frame):
             return
         self.input_var.set("")
 
-        # Context injection dziala globalnie w ClaudeCode.ask() przez message_hook
-        self._append_text("Claude mysli...\n", "system")
+        # Context injection works globally in ClaudeCode.ask() via message_hook
+        self._append_text("Claude is thinking...\n", "system")
         self.send_btn.configure(state=tk.DISABLED)
         self.claude.send_chat(msg)
 
     def _on_traffic(self, direction: str, text: str, meta: dict):
-        """Globalny listener - wrzuca do kolejki (wolany z dowolnego watku)."""
+        """Global listener - pushes to queue (called from any thread)."""
         self._traffic_queue.put((direction, text, meta))
 
     def _poll_traffic(self):
-        """Polling co 100ms - odczytuje kolejke i wyswietla w chacie (main thread)."""
+        """Poll every 100ms - reads queue and displays in chat (main thread)."""
         try:
             while True:
                 direction, text, meta = self._traffic_queue.get_nowait()
@@ -130,15 +130,15 @@ class ClaudeTab(ttk.Frame):
 
     def _show_traffic_item(self, direction: str, text: str, meta: dict):
         if direction == "send":
-            self._append_text(f"\n>>> PROMPT WYSYLANY >>>\n", "traffic_header")
+            self._append_text(f"\n>>> PROMPT SENT >>>\n", "traffic_header")
             if meta.get("system_prompt"):
                 self._append_text(f"[system_prompt: {meta['system_prompt'][:100]}...]\n", "system")
             self._append_text(f"{text}\n", "prompt_full")
-            self._append_text(f">>> KONIEC PROMPTU >>>\n\n", "traffic_header")
+            self._append_text(f">>> END OF PROMPT >>>\n\n", "traffic_header")
 
         elif direction == "recv":
             self._remove_thinking()
-            self._append_text(f"<<< ODPOWIEDZ CLAUDE <<<\n", "traffic_header")
+            self._append_text(f"<<< CLAUDE RESPONSE <<<\n", "traffic_header")
             self._append_text(f"{text}\n", "response_full")
             meta_parts = []
             if meta.get("model"):
@@ -149,30 +149,30 @@ class ClaudeTab(ttk.Frame):
                 meta_parts.append(f"{meta['duration_ms']:.0f}ms")
             if meta_parts:
                 self._append_text(f"  [{' | '.join(meta_parts)}]\n", "system")
-            self._append_text(f"<<< KONIEC ODPOWIEDZI <<<\n\n", "traffic_header")
+            self._append_text(f"<<< END OF RESPONSE <<<\n\n", "traffic_header")
             self.send_btn.configure(state=tk.NORMAL)
             self.input_entry.focus_set()
 
         elif direction == "error":
             self._remove_thinking()
-            self._append_text(f"<<< BLAD <<<\n", "traffic_header")
+            self._append_text(f"<<< ERROR <<<\n", "traffic_header")
             self._append_text(f"{text}\n", "error")
-            self._append_text(f"<<< KONIEC BLEDU <<<\n\n", "traffic_header")
+            self._append_text(f"<<< END OF ERROR <<<\n\n", "traffic_header")
             self.send_btn.configure(state=tk.NORMAL)
             self.input_entry.focus_set()
 
     def _on_response(self, response):
-        # Odpowiedz wyswietlona przez traffic polling - unlock UI jako fallback
+        # Response displayed via traffic polling - unlock UI as fallback
         pass
 
     def _on_error(self, error):
-        # Blad wyswietlony przez traffic polling
+        # Error displayed via traffic polling
         pass
 
     def _remove_thinking(self):
         self.chat.configure(state=tk.NORMAL)
         content = self.chat.get("1.0", tk.END)
-        idx = content.rfind("Claude mysli...")
+        idx = content.rfind("Claude is thinking...")
         if idx != -1:
             ln = content[:idx].count("\n") + 1
             self.chat.delete(f"{ln}.0", f"{ln}.end+1c")
@@ -180,12 +180,12 @@ class ClaudeTab(ttk.Frame):
 
 
 # ============================================================
-#  Zakladka: Scraper (Crawl4AI - 100% lokalne)
+#  Tab: Scraper (Crawl4AI - 100% local)
 # ============================================================
 
 class ScraperTab(ttk.Frame):
-    """Panel Scraper - scrapowanie i mapowanie stron.
-    Uzywa Crawl4AI - dziala lokalnie, bez API keys."""
+    """Scraper panel - scraping and mapping pages.
+    Uses Crawl4AI - runs locally, no API keys."""
 
     def __init__(self, parent, claude_tab: ClaudeTab):
         super().__init__(parent)
@@ -199,7 +199,7 @@ class ScraperTab(ttk.Frame):
                 from scraper import Scraper
                 self._sc = Scraper(on_status=self._on_status)
             except ImportError:
-                messagebox.showerror("Blad", "Brak modulu scraper.\npip install crawl4ai && crawl4ai-setup")
+                messagebox.showerror("Error", "Missing scraper module.\npip install crawl4ai && crawl4ai-setup")
                 return None
         return self._sc
 
@@ -207,21 +207,21 @@ class ScraperTab(ttk.Frame):
         # --- Info ---
         info = ttk.Label(
             self,
-            text="Lokalna przegladarka (Crawl4AI) - bez API keys, bez limitow",
+            text="Local browser (Crawl4AI) - no API keys, no limits",
             font=("monospace", 9, "italic"),
             foreground="#a6e3a1",
         )
         info.pack(fill=tk.X, padx=8, pady=(8, 2))
 
-        # --- Akcje ---
-        action_frame = ttk.LabelFrame(self, text="Akcja")
+        # --- Actions ---
+        action_frame = ttk.LabelFrame(self, text="Action")
         action_frame.pack(fill=tk.X, padx=4, pady=4)
 
         self.action_var = tk.StringVar(value="scrape")
         actions = [
             ("Scrape", "scrape"),
             ("Multi-scrape", "multi"),
-            ("Map linki", "map"),
+            ("Map links", "map"),
             ("Scrape+Claude", "scrape_ask"),
         ]
         btn_row = ttk.Frame(action_frame)
@@ -242,17 +242,17 @@ class ScraperTab(ttk.Frame):
         self.go_btn = ttk.Button(input_frame, text="Start", command=self._run_action)
         self.go_btn.pack(side=tk.RIGHT)
 
-        # --- Pytanie do Claude ---
+        # --- Question for Claude ---
         q_frame = ttk.Frame(action_frame)
         q_frame.pack(fill=tk.X, padx=4, pady=(0, 4))
 
-        ttk.Label(q_frame, text="Pytanie:").pack(side=tk.LEFT)
+        ttk.Label(q_frame, text="Question:").pack(side=tk.LEFT)
         self.question_var = tk.StringVar()
         ttk.Entry(q_frame, textvariable=self.question_var, font=("monospace", 10)).pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=4
         )
 
-        # --- Wynik ---
+        # --- Result ---
         self.result_text = scrolledtext.ScrolledText(
             self, wrap=tk.WORD, font=("monospace", 11),
             bg="#1e1e2e", fg="#cdd6f4", insertbackground="#cdd6f4",
@@ -266,12 +266,12 @@ class ScraperTab(ttk.Frame):
         self.result_text.tag_configure("error", foreground="#f38ba8")
         self.result_text.tag_configure("success", foreground="#a6e3a1")
 
-        # --- Przyciski dolne ---
+        # --- Bottom buttons ---
         bottom = ttk.Frame(self)
         bottom.pack(fill=tk.X, padx=4, pady=(0, 4))
-        ttk.Button(bottom, text="Wyczysc", command=self._clear).pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Wyslij do Claude", command=self._send_to_claude).pack(side=tk.RIGHT)
-        ttk.Button(bottom, text="Wstaw do edytora", command=self._insert_to_editor).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(bottom, text="Clear", command=self._clear).pack(side=tk.LEFT)
+        ttk.Button(bottom, text="Send to Claude", command=self._send_to_claude).pack(side=tk.RIGHT)
+        ttk.Button(bottom, text="Insert into editor", command=self._insert_to_editor).pack(side=tk.RIGHT, padx=4)
 
     def _on_status(self, msg):
         self.after(0, self._append_result, f"{msg}\n", "status")
@@ -297,7 +297,7 @@ class ScraperTab(ttk.Frame):
 
         url = self.url_var.get().strip()
         if not url:
-            self._append_result("Podaj URL.\n", "error")
+            self._append_result("Enter a URL.\n", "error")
             return
 
         action = self.action_var.get()
@@ -312,7 +312,7 @@ class ScraperTab(ttk.Frame):
             if action == "scrape":
                 result = sc.scrape(url)
                 if result.is_error:
-                    self.after(0, self._append_result, f"Blad: {result.error_msg}\n", "error")
+                    self.after(0, self._append_result, f"Error: {result.error_msg}\n", "error")
                 else:
                     self.after(0, self._show_scrape, result)
 
@@ -320,35 +320,35 @@ class ScraperTab(ttk.Frame):
                 urls = [u.strip() for u in url.split(",") if u.strip()]
                 if len(urls) < 2:
                     self.after(0, self._append_result,
-                        "Podaj wiele URL oddzielonych przecinkiem.\n"
-                        "Np: https://a.com, https://b.com\n", "error")
+                        "Enter multiple URLs separated by commas.\n"
+                        "E.g.: https://a.com, https://b.com\n", "error")
                     return
-                self.after(0, self._append_result, f"Scrapuje {len(urls)} stron...\n", "status")
+                self.after(0, self._append_result, f"Scraping {len(urls)} pages...\n", "status")
                 results = sc.scrape_many(urls)
                 for r in results:
                     if r.is_error:
-                        self.after(0, self._append_result, f"Blad {r.url}: {r.error_msg}\n", "error")
+                        self.after(0, self._append_result, f"Error {r.url}: {r.error_msg}\n", "error")
                     else:
                         self.after(0, self._show_scrape, r)
                         self.after(0, self._append_result, "\n---\n\n", "status")
 
             elif action == "map":
-                self.after(0, self._append_result, f"Mapuje linki na {url}...\n", "status")
+                self.after(0, self._append_result, f"Mapping links on {url}...\n", "status")
                 urls = sc.map_site(url, max_depth=1)
                 self.after(0, self._show_urls, url, urls)
 
             elif action == "scrape_ask":
                 question = self.question_var.get().strip()
                 if not question:
-                    self.after(0, self._append_result, "Wpisz pytanie w polu 'Pytanie'.\n", "error")
+                    self.after(0, self._append_result, "Enter a question in the 'Question' field.\n", "error")
                     return
-                self.after(0, self._append_result, "Scrapuje strone...\n", "status")
+                self.after(0, self._append_result, "Scraping page...\n", "status")
                 result = sc.scrape(url)
                 if result.is_error:
-                    self.after(0, self._append_result, f"Blad scrape: {result.error_msg}\n", "error")
+                    self.after(0, self._append_result, f"Scrape error: {result.error_msg}\n", "error")
                     return
                 self.after(0, self._append_result,
-                    f"OK ({len(result.markdown)} znakow). Pytam Claude...\n", "status")
+                    f"OK ({len(result.markdown)} chars). Asking Claude...\n", "status")
                 claude = ClaudeCode()
                 resp = claude.scrape_and_ask(url, question)
                 self.after(0, self._append_result,
@@ -356,35 +356,35 @@ class ScraperTab(ttk.Frame):
                     "success" if not resp.is_error else "error")
 
         except Exception as e:
-            self.after(0, self._append_result, f"Wyjatek: {e}\n", "error")
+            self.after(0, self._append_result, f"Exception: {e}\n", "error")
         finally:
             self.after(0, lambda: self.go_btn.configure(state=tk.NORMAL))
 
     def _show_scrape(self, result):
-        self._append_result(f"Strona: {result.title or '(brak tytulu)'}\n", "title")
+        self._append_result(f"Page: {result.title or '(no title)'}\n", "title")
         self._append_result(f"{result.url}\n", "url")
-        self._append_result(f"[{len(result.markdown)} zn | {len(result.links)} linkow | {result.elapsed_sec:.1f}s]\n\n", "status")
+        self._append_result(f"[{len(result.markdown)} chars | {len(result.links)} links | {result.elapsed_sec:.1f}s]\n\n", "status")
         md = result.markdown
         if len(md) > 5000:
-            self._append_result(md[:5000] + f"\n\n... (obcieto, lacznie {len(md)} znakow)\n")
+            self._append_result(md[:5000] + f"\n\n... (truncated, total {len(md)} chars)\n")
         else:
             self._append_result(md + "\n")
 
     def _show_urls(self, base_url, urls):
-        self._append_result(f"Linki na {base_url}: {len(urls)} znalezionych\n\n", "title")
+        self._append_result(f"Links on {base_url}: {len(urls)} found\n\n", "title")
         for u in urls[:80]:
             self._append_result(f"  {u}\n", "url")
         if len(urls) > 80:
-            self._append_result(f"\n  ... i {len(urls) - 80} wiecej\n", "status")
+            self._append_result(f"\n  ... and {len(urls) - 80} more\n", "status")
 
     def _send_to_claude(self):
         content = self.result_text.get("1.0", tk.END).strip()
         if not content:
             return
         if len(content) > 8000:
-            content = content[:8000] + "\n...(obcieto)"
+            content = content[:8000] + "\n...(truncated)"
         self.claude_tab._append_text(f"\n[Scraper -> Claude]\n", "system")
-        self.claude_tab.input_var.set(f"Przeanalizuj te dane ze strony:\n{content[:200]}...")
+        self.claude_tab.input_var.set(f"Analyze this data from the page:\n{content[:200]}...")
         self.claude_tab.input_entry.focus_set()
 
     def _insert_to_editor(self):
@@ -395,7 +395,7 @@ class ScraperTab(ttk.Frame):
 
 
 # ============================================================
-#  Scheduler - harmonogram uruchamiania kodu
+#  Scheduler - code execution schedule
 # ============================================================
 
 @dataclass
@@ -404,16 +404,16 @@ class ScheduledJob:
     code: str
     mode: str              # "once" | "daily" | "interval" | "weekly"
     time_str: str          # "14:30"
-    date_str: str          # "2026-03-15" (dla once)
-    interval_min: int      # minuty (dla interval)
-    weekdays: list         # 0=Pn..6=Nd (dla weekly)
+    date_str: str          # "2026-03-15" (for once)
+    interval_min: int      # minutes (for interval)
+    weekdays: list         # 0=Mon..6=Sun (for weekly)
     active: bool = True
     next_run: datetime = field(default_factory=datetime.now)
     last_run: datetime | None = None
 
 
 class Scheduler:
-    """Silnik harmonogramu - zarzadza zadaniami i oblicza next_run."""
+    """Schedule engine - manages jobs and calculates next_run."""
 
     def __init__(self):
         self.jobs: list[ScheduledJob] = []
@@ -479,12 +479,12 @@ class Scheduler:
                 h, m = map(int, job.time_str.split(":"))
             except ValueError:
                 h, m = 0, 0
-            # Szukaj najblizszego dnia tygodnia
+            # Find nearest weekday
             for delta in range(1, 8):
                 candidate = now + timedelta(days=delta)
                 if candidate.weekday() in job.weekdays:
                     return candidate.replace(hour=h, minute=m, second=0, microsecond=0)
-            # Dzis jeszcze?
+            # Still today?
             if now.weekday() in job.weekdays:
                 target = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if target > now:
@@ -501,7 +501,7 @@ class Scheduler:
 
 
 class SchedulerTab(ttk.Frame):
-    """Zakladka Scheduler - harmonogram uruchamiania kodu."""
+    """Scheduler tab - code execution schedule."""
 
     def __init__(self, parent, python_panel_ref, discord_tab=None):
         super().__init__(parent)
@@ -512,59 +512,59 @@ class SchedulerTab(ttk.Frame):
         self._tick()
 
     def _build_ui(self):
-        # --- Gorny panel: dodawanie zadan ---
-        add_frame = ttk.LabelFrame(self, text="Nowe zadanie")
+        # --- Top panel: adding tasks ---
+        add_frame = ttk.LabelFrame(self, text="New task")
         add_frame.pack(fill=tk.X, padx=4, pady=4)
 
-        # Nazwa
+        # Name
         name_row = ttk.Frame(add_frame)
         name_row.pack(fill=tk.X, padx=4, pady=(4, 2))
-        ttk.Label(name_row, text="Nazwa:").pack(side=tk.LEFT)
+        ttk.Label(name_row, text="Name:").pack(side=tk.LEFT)
         self.name_var = tk.StringVar()
         ttk.Entry(name_row, textvariable=self.name_var, font=("monospace", 10)).pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=4
         )
 
-        # Tryb
+        # Mode
         mode_row = ttk.Frame(add_frame)
         mode_row.pack(fill=tk.X, padx=4, pady=2)
         self.mode_var = tk.StringVar(value="interval")
-        for text, val in [("Jednorazowo", "once"), ("Codziennie", "daily"),
-                          ("Co X min", "interval"), ("Dni tyg.", "weekly")]:
+        for text, val in [("Once", "once"), ("Daily", "daily"),
+                          ("Every X min", "interval"), ("Weekdays", "weekly")]:
             ttk.Radiobutton(mode_row, text=text, variable=self.mode_var,
                             value=val, command=self._on_mode_change).pack(side=tk.LEFT, padx=3)
 
-        # Parametry - kontener
+        # Parameters - container
         self.params_frame = ttk.Frame(add_frame)
         self.params_frame.pack(fill=tk.X, padx=4, pady=2)
 
-        # Data (once)
+        # Date (once)
         self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        # Godzina
+        # Time
         self.hour_var = tk.StringVar(value="12")
         self.min_var = tk.StringVar(value="00")
-        # Interwal
+        # Interval
         self.interval_var = tk.StringVar(value="30")
-        # Dni tygodnia
+        # Weekdays
         self.weekday_vars = [tk.BooleanVar(value=False) for _ in range(7)]
 
         self._on_mode_change()
 
-        # Przyciski
+        # Buttons
         btn_row = ttk.Frame(add_frame)
         btn_row.pack(fill=tk.X, padx=4, pady=(2, 4))
-        ttk.Button(btn_row, text="Dodaj do harmonogramu", command=self._add_job).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row, text="Uruchom od razu", command=self._run_now).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="Add to schedule", command=self._add_job).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(btn_row, text="Run now", command=self._run_now).pack(side=tk.LEFT)
 
-        # --- Lista zadan ---
-        list_frame = ttk.LabelFrame(self, text="Zaplanowane zadania")
+        # --- Task list ---
+        list_frame = ttk.LabelFrame(self, text="Scheduled tasks")
         list_frame.pack(fill=tk.X, padx=4, pady=4)
 
         cols = ("name", "mode", "next_run", "status")
         self.tree = ttk.Treeview(list_frame, columns=cols, show="headings", height=5)
-        self.tree.heading("name", text="Nazwa")
-        self.tree.heading("mode", text="Tryb")
-        self.tree.heading("next_run", text="Nastepne uruchomienie")
+        self.tree.heading("name", text="Name")
+        self.tree.heading("mode", text="Mode")
+        self.tree.heading("next_run", text="Next run")
         self.tree.heading("status", text="Status")
         self.tree.column("name", width=100)
         self.tree.column("mode", width=80)
@@ -572,7 +572,7 @@ class SchedulerTab(ttk.Frame):
         self.tree.column("status", width=70)
         self.tree.pack(fill=tk.X, padx=4, pady=4)
 
-        # Style treeview
+        # Treeview styles
         style = ttk.Style()
         style.configure("Treeview", background="#1e1e2e", foreground="#cdd6f4",
                          fieldbackground="#1e1e2e", rowheight=22)
@@ -580,11 +580,11 @@ class SchedulerTab(ttk.Frame):
 
         tree_btns = ttk.Frame(list_frame)
         tree_btns.pack(fill=tk.X, padx=4, pady=(0, 4))
-        ttk.Button(tree_btns, text="Wstrzymaj/Wznow", command=self._toggle_selected).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(tree_btns, text="Usun", command=self._remove_selected).pack(side=tk.LEFT)
+        ttk.Button(tree_btns, text="Pause/Resume", command=self._toggle_selected).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(tree_btns, text="Remove", command=self._remove_selected).pack(side=tk.LEFT)
 
-        # --- Log wyjscia ---
-        log_frame = ttk.LabelFrame(self, text="Log wykonania")
+        # --- Execution log ---
+        log_frame = ttk.LabelFrame(self, text="Execution log")
         log_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
         self.log_text = scrolledtext.ScrolledText(
@@ -599,8 +599,8 @@ class SchedulerTab(ttk.Frame):
         self.log_text.tag_configure("time", foreground="#f9e2af")
         self.log_text.tag_configure("status", foreground="#6c7086", font=("monospace", 9, "italic"))
 
-        # --- Pasek statusu ---
-        self.status_var = tk.StringVar(value="Brak zaplanowanych zadan")
+        # --- Status bar ---
+        self.status_var = tk.StringVar(value="No scheduled tasks")
         status_bar = ttk.Label(self, textvariable=self.status_var,
                                font=("monospace", 9, "italic"), foreground="#6c7086")
         status_bar.pack(fill=tk.X, padx=8, pady=(0, 4))
@@ -612,10 +612,10 @@ class SchedulerTab(ttk.Frame):
         mode = self.mode_var.get()
 
         if mode == "once":
-            ttk.Label(self.params_frame, text="Data:").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text="Date:").pack(side=tk.LEFT)
             ttk.Entry(self.params_frame, textvariable=self.date_var, width=12,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=4)
-            ttk.Label(self.params_frame, text="Godz:").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text="Time:").pack(side=tk.LEFT)
             ttk.Entry(self.params_frame, textvariable=self.hour_var, width=3,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
             ttk.Label(self.params_frame, text=":").pack(side=tk.LEFT)
@@ -623,7 +623,7 @@ class SchedulerTab(ttk.Frame):
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
 
         elif mode == "daily":
-            ttk.Label(self.params_frame, text="Godzina:").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text="Time:").pack(side=tk.LEFT)
             ttk.Entry(self.params_frame, textvariable=self.hour_var, width=3,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
             ttk.Label(self.params_frame, text=":").pack(side=tk.LEFT)
@@ -631,17 +631,17 @@ class SchedulerTab(ttk.Frame):
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
 
         elif mode == "interval":
-            ttk.Label(self.params_frame, text="Co").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text="Every").pack(side=tk.LEFT)
             ttk.Entry(self.params_frame, textvariable=self.interval_var, width=5,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=4)
-            ttk.Label(self.params_frame, text="minut").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text="minutes").pack(side=tk.LEFT)
 
         elif mode == "weekly":
-            days = ["Pn", "Wt", "Sr", "Cz", "Pt", "So", "Nd"]
+            days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
             for i, day in enumerate(days):
                 ttk.Checkbutton(self.params_frame, text=day,
                                 variable=self.weekday_vars[i]).pack(side=tk.LEFT, padx=1)
-            ttk.Label(self.params_frame, text=" o").pack(side=tk.LEFT)
+            ttk.Label(self.params_frame, text=" at").pack(side=tk.LEFT)
             ttk.Entry(self.params_frame, textvariable=self.hour_var, width=3,
                       font=("monospace", 10)).pack(side=tk.LEFT, padx=2)
             ttk.Label(self.params_frame, text=":").pack(side=tk.LEFT)
@@ -651,16 +651,16 @@ class SchedulerTab(ttk.Frame):
     def _add_job(self):
         name = self.name_var.get().strip()
         if not name:
-            messagebox.showwarning("Scheduler", "Podaj nazwe zadania.")
+            messagebox.showwarning("Scheduler", "Enter a task name.")
             return
-        # Sprawdz duplikat
+        # Check for duplicate
         if any(j.name == name for j in self.scheduler.jobs):
-            messagebox.showwarning("Scheduler", f"Zadanie '{name}' juz istnieje.")
+            messagebox.showwarning("Scheduler", f"Task '{name}' already exists.")
             return
 
         code = self.python_panel.editor.get("1.0", tk.END).strip()
         if not code:
-            messagebox.showwarning("Scheduler", "Edytor jest pusty - wpisz kod do uruchomienia.")
+            messagebox.showwarning("Scheduler", "Editor is empty - enter code to run.")
             return
 
         mode = self.mode_var.get()
@@ -680,16 +680,16 @@ class SchedulerTab(ttk.Frame):
         self.scheduler.add_job(job)
         self._refresh_tree()
         self._update_status()
-        self._log(f"Dodano zadanie '{name}' ({mode}), nastepne: {job.next_run.strftime('%Y-%m-%d %H:%M:%S')}", "info")
+        self._log(f"Added task '{name}' ({mode}), next: {job.next_run.strftime('%Y-%m-%d %H:%M:%S')}", "info")
         self.name_var.set("")
 
     def _run_now(self):
         code = self.python_panel.editor.get("1.0", tk.END).strip()
         if not code:
-            messagebox.showwarning("Scheduler", "Edytor jest pusty.")
+            messagebox.showwarning("Scheduler", "Editor is empty.")
             return
         name = self.name_var.get().strip() or "test"
-        self._log(f"Uruchamiam '{name}' natychmiast...", "info")
+        self._log(f"Running '{name}' immediately...", "info")
         threading.Thread(target=self._execute_job_code, args=(name, code), daemon=True).start()
 
     def _toggle_selected(self):
@@ -699,8 +699,8 @@ class SchedulerTab(ttk.Frame):
         name = self.tree.item(sel[0])["values"][0]
         result = self.scheduler.toggle_job(name)
         if result is not None:
-            state = "aktywne" if result else "wstrzymane"
-            self._log(f"Zadanie '{name}' -> {state}", "info")
+            state = "active" if result else "paused"
+            self._log(f"Task '{name}' -> {state}", "info")
         self._refresh_tree()
         self._update_status()
 
@@ -710,17 +710,17 @@ class SchedulerTab(ttk.Frame):
             return
         name = self.tree.item(sel[0])["values"][0]
         self.scheduler.remove_job(name)
-        self._log(f"Usunieto zadanie '{name}'", "info")
+        self._log(f"Removed task '{name}'", "info")
         self._refresh_tree()
         self._update_status()
 
     def _refresh_tree(self):
         for item in self.tree.get_children():
             self.tree.delete(item)
-        mode_labels = {"once": "Jednorazowo", "daily": "Codziennie",
-                       "interval": "Cyklicznie", "weekly": "Tygodniowo"}
+        mode_labels = {"once": "Once", "daily": "Daily",
+                       "interval": "Recurring", "weekly": "Weekly"}
         for j in self.scheduler.jobs:
-            status = "Aktywne" if j.active else "Wstrzymane"
+            status = "Active" if j.active else "Paused"
             next_str = j.next_run.strftime("%Y-%m-%d %H:%M") if j.active else "-"
             self.tree.insert("", tk.END, values=(j.name, mode_labels.get(j.mode, j.mode),
                                                   next_str, status))
@@ -729,17 +729,17 @@ class SchedulerTab(ttk.Frame):
         active = sum(1 for j in self.scheduler.jobs if j.active)
         nxt = self.scheduler.next_scheduled()
         if active == 0:
-            self.status_var.set("Brak aktywnych zadan")
+            self.status_var.set("No active tasks")
         elif nxt:
-            self.status_var.set(f"Aktywnych: {active} | Nastepne: {nxt.strftime('%H:%M:%S')}")
+            self.status_var.set(f"Active: {active} | Next: {nxt.strftime('%H:%M:%S')}")
         else:
-            self.status_var.set(f"Aktywnych: {active}")
+            self.status_var.set(f"Active: {active}")
 
     def _tick(self):
-        """Sprawdzaj co sekunde czy trzeba uruchomic zadanie."""
+        """Check every second if a task needs to run."""
         due = self.scheduler.get_due_jobs()
         for job in due:
-            self._log(f"Uruchamiam '{job.name}'...", "time")
+            self._log(f"Running '{job.name}'...", "time")
             self.scheduler.mark_run(job)
             threading.Thread(target=self._execute_job_code,
                              args=(job.name, job.code), daemon=True).start()
@@ -749,7 +749,7 @@ class SchedulerTab(ttk.Frame):
         self.after(1000, self._tick)
 
     def _execute_job_code(self, name: str, code: str):
-        """Uruchom kod w watku, output do logu."""
+        """Run code in a thread, output to log."""
         output_queue = queue.Queue()
         live_stdout = LiveWriter(output_queue, tag="")
         live_stderr = LiveWriter(output_queue, tag="error")
@@ -772,7 +772,7 @@ class SchedulerTab(ttk.Frame):
         finally:
             output_queue.put(("__DONE__", ""))
 
-        # Odczytaj caly output
+        # Read all output
         lines = []
         while True:
             try:
@@ -783,14 +783,14 @@ class SchedulerTab(ttk.Frame):
             except queue.Empty:
                 break
 
-        # Wyswietl w logu (z main thread)
+        # Display in log (from main thread)
         def show():
             self._log(f"--- [{name}] {datetime.now().strftime('%H:%M:%S')} ---", "time")
             for text, tag in lines:
                 self._log_raw(text, tag if tag else None)
         self.after(0, show)
 
-        # Discord - wyslij wynik jesli skonfigurowane
+        # Discord - send result if configured
         if self.discord_tab and lines:
             output_text = "".join(text for text, _ in lines)
             self.discord_tab.notify_scheduler_result(name, output_text)
@@ -810,14 +810,14 @@ class SchedulerTab(ttk.Frame):
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
 
-    # --- Konfiguracja JSON ---
+    # --- JSON Configuration ---
 
     def save_to_config(self, cm: ConfigManager):
         cm.save_scheduler_jobs(self.scheduler.jobs)
 
     def load_from_config(self, cm: ConfigManager):
         jobs_data = cm.get_scheduler_jobs()
-        # Usun istniejace joby
+        # Remove existing jobs
         self.scheduler.jobs.clear()
         for jd in jobs_data:
             job = ScheduledJob(
@@ -834,41 +834,41 @@ class SchedulerTab(ttk.Frame):
         self._refresh_tree()
         self._update_status()
         if jobs_data:
-            self._log(f"Wczytano {len(jobs_data)} zadan z konfiguracji", "info")
+            self._log(f"Loaded {len(jobs_data)} tasks from configuration", "info")
 
 
 # ============================================================
-#  Context Keeper - automatyczne przypomnienia kontekstu
+#  Context Keeper - automatic context reminders
 # ============================================================
 
-_DEFAULT_CONTEXT = """=== KONTEKST SYSTEMOWY ===
-Jestes autonomicznym asystentem pracujacym w srodowisku automatyzacji zadan. \
-Uzytkownik uzywa Cie jako element pipeline'u - Twoje odpowiedzi moga byc \
-przetwarzane automatycznie, cyklicznie i bez nadzoru.
+_DEFAULT_CONTEXT = """=== SYSTEM CONTEXT ===
+You are an autonomous assistant working in a task automation environment. \
+The user uses you as a pipeline element - your responses may be \
+processed automatically, cyclically, and without supervision.
 
-Srodowisko: {pwd}
-Dostepne narzedzia: wykonywanie skryptow Python, scraper stron www (Crawl4AI), \
-harmonogram zadan (Scheduler), integracja z zewnetrznymi API.
+Environment: {pwd}
+Available tools: Python script execution, web scraper (Crawl4AI), \
+task scheduler (Scheduler), external API integration.
 
-Typowe zastosowania:
-- Monitoring i analiza danych (gielda, rynki, statystyki)
-- Automatyczne sprawdzanie i przetwarzanie informacji (maile, powiadomienia, RSS)
-- Cykliczne raporty i podsumowania
-- Pipeline'y laczace scraping -> analiza -> decyzja -> akcja
-- Dowolne zadania powtarzalne uruchamiane wg harmonogramu
+Typical use cases:
+- Data monitoring and analysis (stock market, statistics)
+- Automatic checking and processing of information (emails, notifications, RSS)
+- Periodic reports and summaries
+- Pipelines combining scraping -> analysis -> decision -> action
+- Any repetitive tasks run on schedule
 
-Zasady:
-- Dzialasz w trybie automatycznym - odpowiadaj konkretnie, bez zbednych wstepow
-- Priorytet: bezpieczenstwo i prywatnosc uzytkownika > poprawnosc > szybkosc
-- Nie wysylaj danych uzytkownika na zewnatrz bez jego wiedzy
-- Nie wykonuj destrukcyjnych operacji bez potwierdzenia
-- Jesli cos jest niejasne a dzialasz w trybie recznym - pytaj; w trybie auto - \
-uzyj bezpiecznego domyslnego zachowania
-=== KONIEC KONTEKSTU ==="""
+Rules:
+- You operate in automatic mode - respond concretely, without unnecessary preamble
+- Priority: user security and privacy > correctness > speed
+- Do not send user data externally without their knowledge
+- Do not perform destructive operations without confirmation
+- If something is unclear and you're in manual mode - ask; in auto mode - \
+use safe default behavior
+=== END OF CONTEXT ==="""
 
 
 class ContextKeeperTab(ttk.Frame):
-    """Zakladka Context Keeper - zarzadzanie kontekstem i przypomnieniami dla Claude."""
+    """Context Keeper tab - manage context and reminders for Claude."""
 
     def __init__(self, parent, claude_tab: ClaudeTab):
         super().__init__(parent)
@@ -876,67 +876,67 @@ class ContextKeeperTab(ttk.Frame):
         self._call_count = 0
         self._lock = threading.Lock()
         self._build_ui()
-        # Globalny hook - wstrzykuje kontekst do KAZDEGO ClaudeCode.ask()
+        # Global hook - injects context into EVERY ClaudeCode.ask()
         ClaudeCode.set_message_hook(self._message_hook)
 
     def _build_ui(self):
-        # --- Aktywnosc (gora) ---
+        # --- Active toggle (top) ---
         top_row = ttk.Frame(self)
         top_row.pack(side=tk.TOP, fill=tk.X, padx=8, pady=(8, 4))
 
         self.active_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(top_row, text="Context Keeper aktywny",
+        ttk.Checkbutton(top_row, text="Context Keeper active",
                         variable=self.active_var).pack(side=tk.LEFT)
 
-        self.counter_var = tk.StringVar(value="Wywolania: 0")
+        self.counter_var = tk.StringVar(value="Calls: 0")
         ttk.Label(top_row, textvariable=self.counter_var,
                   font=("monospace", 9, "italic"), foreground="#6c7086").pack(side=tk.RIGHT)
 
-        # --- Przyciski (dol) - packujemy od dolu zeby mialy gwarancje miejsca ---
+        # --- Buttons (bottom) - pack from bottom to guarantee space ---
         btn_frame = ttk.Frame(self)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(0, 4))
 
-        ttk.Button(btn_frame, text="Wyslij kontekst teraz",
+        ttk.Button(btn_frame, text="Send context now",
                    command=self._send_now).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_frame, text="Resetuj licznik",
+        ttk.Button(btn_frame, text="Reset counter",
                    command=self._reset_counter).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_frame, text="Przywroc domyslny prompt",
+        ttk.Button(btn_frame, text="Restore default prompt",
                    command=self._restore_default).pack(side=tk.LEFT)
 
-        # --- Ustawienia przypomnien (dol, nad przyciskami) ---
-        settings_frame = ttk.LabelFrame(self, text="Automatyczne przypomnienia")
+        # --- Reminder settings (bottom, above buttons) ---
+        settings_frame = ttk.LabelFrame(self, text="Automatic reminders")
         settings_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(0, 4))
 
         row1 = ttk.Frame(settings_frame)
         row1.pack(fill=tk.X, padx=4, pady=(4, 2))
 
         self.auto_first_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row1, text="Wyslij kontekst przy pierwszym wywolaniu",
+        ttk.Checkbutton(row1, text="Send context on first call",
                         variable=self.auto_first_var).pack(side=tk.LEFT)
 
         row2 = ttk.Frame(settings_frame)
         row2.pack(fill=tk.X, padx=4, pady=2)
 
         self.auto_every_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row2, text="Przypominaj rekurencyjnie (przy kazdym wywolaniu)",
+        ttk.Checkbutton(row2, text="Remind recursively (on every call)",
                         variable=self.auto_every_var).pack(side=tk.LEFT)
 
         row3 = ttk.Frame(settings_frame)
         row3.pack(fill=tk.X, padx=4, pady=(2, 4))
 
         self.auto_remind_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row3, text="Przypominaj co",
+        ttk.Checkbutton(row3, text="Remind every",
                         variable=self.auto_remind_var).pack(side=tk.LEFT)
         self.interval_var = tk.StringVar(value="100")
         ttk.Entry(row3, textvariable=self.interval_var, width=5,
                   font=("monospace", 10)).pack(side=tk.LEFT, padx=4)
-        ttk.Label(row3, text="wywolan").pack(side=tk.LEFT)
+        ttk.Label(row3, text="calls").pack(side=tk.LEFT)
 
-        # --- Srodek: prompt + log w PanedWindow (rozciagliwe, wypelnia reszte) ---
+        # --- Center: prompt + log in PanedWindow (expandable, fills remaining space) ---
         paned = ttk.PanedWindow(self, orient=tk.VERTICAL)
         paned.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        prompt_frame = ttk.LabelFrame(paned, text="Prompt kontekstowy (wysylany do Claude)")
+        prompt_frame = ttk.LabelFrame(paned, text="Context prompt (sent to Claude)")
         paned.add(prompt_frame, weight=3)
 
         self.prompt_text = scrolledtext.ScrolledText(
@@ -949,7 +949,7 @@ class ContextKeeperTab(ttk.Frame):
         default = _DEFAULT_CONTEXT.format(pwd=os.getcwd())
         self.prompt_text.insert("1.0", default)
 
-        log_frame = ttk.LabelFrame(paned, text="Historia wysylania kontekstu")
+        log_frame = ttk.LabelFrame(paned, text="Context sending history")
         paned.add(log_frame, weight=1)
 
         self.log_text = scrolledtext.ScrolledText(
@@ -963,7 +963,7 @@ class ContextKeeperTab(ttk.Frame):
         self.log_text.tag_configure("status", foreground="#6c7086")
 
     def _message_hook(self, message: str) -> str:
-        """Globalny hook - wolany przez ClaudeCode.ask() z dowolnego watku."""
+        """Global hook - called by ClaudeCode.ask() from any thread."""
         with self._lock:
             call_number = self._call_count
             self._call_count += 1
@@ -972,7 +972,7 @@ class ContextKeeperTab(ttk.Frame):
             self.after(0, self._update_counter, call_number + 1)
             return message
 
-        # Odczyt promptu z widgetu (bezpieczne do czytania z innego watku)
+        # Read prompt from widget (safe to read from another thread)
         prompt = self.prompt_text.get("1.0", tk.END).strip()
         if not prompt:
             self.after(0, self._update_counter, call_number + 1)
@@ -980,20 +980,20 @@ class ContextKeeperTab(ttk.Frame):
 
         prefix = ""
 
-        # Pierwsze wywolanie
+        # First call
         if call_number == 0 and self.auto_first_var.get():
             prefix = prompt
-            self.after(0, self._log, f"[#{call_number}] Wyslano kontekst poczatkowy", "info")
+            self.after(0, self._log, f"[#{call_number}] Sent initial context", "info")
 
-        # Tryb rekurencyjny - przy kazdym wywolaniu
+        # Recursive mode - on every call
         elif self.auto_every_var.get() and call_number > 0:
             prefix = (
-                f"[PRZYPOMNIENIE KONTEKSTU - wywolanie #{call_number}]\n\n"
+                f"[CONTEXT REMINDER - call #{call_number}]\n\n"
                 f"{prompt}"
             )
-            self.after(0, self._log, f"[#{call_number}] Przypomnienie rekurencyjne", "remind")
+            self.after(0, self._log, f"[#{call_number}] Recursive reminder", "remind")
 
-        # Cykliczne przypomnienie co N wywolan
+        # Periodic reminder every N calls
         elif self.auto_remind_var.get():
             try:
                 interval = int(self.interval_var.get())
@@ -1001,10 +1001,10 @@ class ContextKeeperTab(ttk.Frame):
                 interval = 100
             if interval > 0 and call_number > 0 and call_number % interval == 0:
                 prefix = (
-                    f"[PRZYPOMNIENIE KONTEKSTU POCZATKOWEGO - wywolanie #{call_number}]\n\n"
+                    f"[INITIAL CONTEXT REMINDER - call #{call_number}]\n\n"
                     f"{prompt}"
                 )
-                self.after(0, self._log, f"[#{call_number}] Przypomnienie cykliczne (co {interval})", "remind")
+                self.after(0, self._log, f"[#{call_number}] Periodic reminder (every {interval})", "remind")
 
         self.after(0, self._update_counter, call_number + 1)
 
@@ -1013,37 +1013,37 @@ class ContextKeeperTab(ttk.Frame):
         return message
 
     def _send_now(self):
-        """Reczne wyslanie kontekstu do Claude."""
+        """Manually send context to Claude."""
         prompt = self.prompt_text.get("1.0", tk.END).strip()
         if not prompt:
-            messagebox.showwarning("Context Keeper", "Prompt jest pusty.")
+            messagebox.showwarning("Context Keeper", "Prompt is empty.")
             return
         if self.claude_tab.claude.busy:
-            messagebox.showwarning("Context Keeper", "Claude jest zajety, poczekaj.")
+            messagebox.showwarning("Context Keeper", "Claude is busy, please wait.")
             return
 
-        msg = f"[KONTEKST RECZNY - wywolanie #{self._call_count}]\n\n{prompt}"
+        msg = f"[MANUAL CONTEXT - call #{self._call_count}]\n\n{prompt}"
 
-        # Traffic listener w ClaudeTab pokaze pelny prompt automatycznie
-        self.claude_tab._append_text("Claude mysli...\n", "system")
+        # Traffic listener in ClaudeTab will show the full prompt automatically
+        self.claude_tab._append_text("Claude is thinking...\n", "system")
         self.claude_tab.send_btn.configure(state=tk.DISABLED)
         self.claude_tab.claude.send_chat(msg)
-        self._log(f"[#{self._call_count}] Reczne wyslanie kontekstu", "info")
+        self._log(f"[#{self._call_count}] Manual context sent", "info")
 
     def _reset_counter(self):
         with self._lock:
             self._call_count = 0
         self._update_counter(0)
-        self._log("Licznik zresetowany", "status")
+        self._log("Counter reset", "status")
 
     def _restore_default(self):
         self.prompt_text.delete("1.0", tk.END)
         default = _DEFAULT_CONTEXT.format(pwd=os.getcwd())
         self.prompt_text.insert("1.0", default)
-        self._log("Przywrocono domyslny prompt", "status")
+        self._log("Restored default prompt", "status")
 
     def _update_counter(self, count: int):
-        self.counter_var.set(f"Wywolania: {count}")
+        self.counter_var.set(f"Calls: {count}")
 
     def _log(self, msg: str, tag: str = None):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -1052,7 +1052,7 @@ class ContextKeeperTab(ttk.Frame):
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
 
-    # --- Konfiguracja JSON ---
+    # --- JSON Configuration ---
 
     def save_to_config(self, cm: ConfigManager):
         prompt = self.prompt_text.get("1.0", tk.END).strip()
@@ -1083,29 +1083,29 @@ class ContextKeeperTab(ttk.Frame):
 
 
 # ============================================================
-#  Discord - powiadomienia webhook
+#  Discord - webhook notifications
 # ============================================================
 
 class DiscordTab(ttk.Frame):
-    """Zakladka Discord - wysylanie powiadomien przez webhook."""
+    """Discord tab - sending notifications via webhook."""
 
     def __init__(self, parent):
         super().__init__(parent)
-        self._notifier = None  # DiscordNotifier - tworzony dynamicznie
+        self._notifier = None  # DiscordNotifier - created dynamically
         self._build_ui()
-        # Listener na odpowiedzi Claude
+        # Listener for Claude responses
         ClaudeCode.add_traffic_listener(self._on_claude_traffic)
 
     def _build_ui(self):
-        # --- Konfiguracja (gora) ---
-        config_frame = ttk.LabelFrame(self, text="Webhook Discord")
+        # --- Configuration (top) ---
+        config_frame = ttk.LabelFrame(self, text="Discord Webhook")
         config_frame.pack(side=tk.TOP, fill=tk.X, padx=4, pady=4)
 
         row1 = ttk.Frame(config_frame)
         row1.pack(fill=tk.X, padx=4, pady=(4, 2))
 
         self.active_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row1, text="Aktywny", variable=self.active_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(row1, text="Active", variable=self.active_var).pack(side=tk.LEFT)
 
         ttk.Label(row1, text="  URL:").pack(side=tk.LEFT)
         self.url_var = tk.StringVar()
@@ -1114,8 +1114,8 @@ class DiscordTab(ttk.Frame):
         )
         ttk.Button(row1, text="Test", command=self._test_webhook).pack(side=tk.RIGHT)
 
-        # --- Wysylanie reczne ---
-        send_frame = ttk.LabelFrame(self, text="Wyslij wiadomosc")
+        # --- Manual sending ---
+        send_frame = ttk.LabelFrame(self, text="Send message")
         send_frame.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(0, 4))
 
         send_row = ttk.Frame(send_frame)
@@ -1125,22 +1125,22 @@ class DiscordTab(ttk.Frame):
         ttk.Entry(send_row, textvariable=self.msg_var, font=("monospace", 10)).pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4)
         )
-        ttk.Button(send_row, text="Wyslij", command=self._send_manual).pack(side=tk.RIGHT)
+        ttk.Button(send_row, text="Send", command=self._send_manual).pack(side=tk.RIGHT)
 
-        # --- Automatyczne powiadomienia ---
-        auto_frame = ttk.LabelFrame(self, text="Automatyczne powiadomienia")
+        # --- Automatic notifications ---
+        auto_frame = ttk.LabelFrame(self, text="Automatic notifications")
         auto_frame.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(0, 4))
 
         self.notify_scheduler_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(auto_frame, text="Wysylaj wyniki Schedulera na Discord",
+        ttk.Checkbutton(auto_frame, text="Send Scheduler results to Discord",
                         variable=self.notify_scheduler_var).pack(fill=tk.X, padx=4, pady=(4, 2))
 
         self.notify_claude_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(auto_frame, text="Wysylaj odpowiedzi Claude na Discord",
+        ttk.Checkbutton(auto_frame, text="Send Claude responses to Discord",
                         variable=self.notify_claude_var).pack(fill=tk.X, padx=4, pady=(2, 4))
 
-        # --- Log (dol, rozciagliwy) ---
-        log_frame = ttk.LabelFrame(self, text="Log wysylki")
+        # --- Log (bottom, expandable) ---
+        log_frame = ttk.LabelFrame(self, text="Send log")
         log_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
 
         self.log_text = scrolledtext.ScrolledText(
@@ -1154,13 +1154,13 @@ class DiscordTab(ttk.Frame):
         self.log_text.tag_configure("info", foreground="#f9e2af")
 
     def _get_notifier(self) -> DiscordNotifier | None:
-        """Zwroc lub utworz DiscordNotifier na bazie biezacych ustawien."""
+        """Return or create DiscordNotifier based on current settings."""
         if not self.active_var.get():
             return None
         url = self.url_var.get().strip()
         if not url:
             return None
-        # Przetworz on_log tak zeby uzywal self.after() do aktualizacji GUI
+        # Process on_log to use self.after() for GUI updates
         def on_log(msg, level):
             tag = {"ok": "ok", "error": "error"}.get(level, "info")
             self.after(0, self._log, f"[{level.upper()}] {msg}", tag)
@@ -1170,7 +1170,7 @@ class DiscordTab(ttk.Frame):
         return self._notifier
 
     def send_message(self, text: str):
-        """Wyslij wiadomosc na Discord. Thread-safe, mozna wolac z dowolnego watku."""
+        """Send message to Discord. Thread-safe, can be called from any thread."""
         notifier = self._get_notifier()
         if notifier:
             notifier.send(text)
@@ -1178,13 +1178,13 @@ class DiscordTab(ttk.Frame):
     def _test_webhook(self):
         url = self.url_var.get().strip()
         if not url:
-            messagebox.showwarning("Discord", "Wklej Webhook URL.")
+            messagebox.showwarning("Discord", "Paste a Webhook URL.")
             return
-        self._log("Wysylam test...", "info")
+        self._log("Sending test...", "info")
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         notifier = self._get_notifier()
         if notifier:
-            notifier.send(f"Test z Claude Code IDE [{ts}]")
+            notifier.send(f"Test from Claude Code IDE [{ts}]")
 
     def _send_manual(self):
         msg = self.msg_var.get().strip()
@@ -1194,7 +1194,7 @@ class DiscordTab(ttk.Frame):
         self.send_message(msg)
 
     def _on_claude_traffic(self, direction: str, text: str, meta: dict):
-        """Listener Claude traffic - forward odpowiedzi na Discord."""
+        """Claude traffic listener - forward responses to Discord."""
         if direction == "recv" and self.notify_claude_var.get():
             model = meta.get("model", "")
             notifier = self._get_notifier()
@@ -1202,7 +1202,7 @@ class DiscordTab(ttk.Frame):
                 notifier.notify_claude(text, model)
 
     def notify_scheduler_result(self, job_name: str, output: str):
-        """Wolane przez Scheduler po wykonaniu zadania."""
+        """Called by Scheduler after task execution."""
         if not self.notify_scheduler_var.get():
             return
         notifier = self._get_notifier()
@@ -1216,7 +1216,7 @@ class DiscordTab(ttk.Frame):
         self.log_text.configure(state=tk.DISABLED)
         self.log_text.see(tk.END)
 
-    # --- Konfiguracja JSON ---
+    # --- JSON Configuration ---
 
     def save_to_config(self, cm: ConfigManager):
         cm.save_discord(
@@ -1235,11 +1235,11 @@ class DiscordTab(ttk.Frame):
 
 
 # ============================================================
-#  Lewy panel z zakladkami
+#  Left panel with tabs
 # ============================================================
 
 class LeftPanel(ttk.Frame):
-    """Lewy panel: zakladki Claude + Scraper + Scheduler + Context + Discord."""
+    """Left panel: Claude + Scraper + Scheduler + Context + Discord tabs."""
 
     def __init__(self, parent, python_panel=None):
         super().__init__(parent)
@@ -1264,17 +1264,17 @@ class LeftPanel(ttk.Frame):
         self.notebook.add(self.discord_tab, text=" Discord ")
 
     def init_scheduler(self, python_panel):
-        """Inicjalizuje zakladke Scheduler (wymaga referencji do PythonPanel)."""
+        """Initialize the Scheduler tab (requires reference to PythonPanel)."""
         self.scheduler_tab = SchedulerTab(self.notebook, python_panel, self.discord_tab)
         self.notebook.add(self.scheduler_tab, text=" Scheduler ")
 
 
 # ============================================================
-#  Prawy panel - edytor Python
+#  Right panel - Python editor
 # ============================================================
 
 class PythonPanel(ttk.Frame):
-    """Prawy panel - edytor i wykonywanie kodu Python."""
+    """Right panel - Python code editor and execution."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -1284,18 +1284,18 @@ class PythonPanel(ttk.Frame):
         toolbar = ttk.Frame(self)
         toolbar.pack(fill=tk.X, padx=8, pady=(8, 4))
 
-        ttk.Label(toolbar, text="Edytor Python", font=("monospace", 14, "bold")).pack(side=tk.LEFT)
+        ttk.Label(toolbar, text="Python Editor", font=("monospace", 14, "bold")).pack(side=tk.LEFT)
 
-        self.run_btn = ttk.Button(toolbar, text="Uruchom (F5)", command=self.run_code)
+        self.run_btn = ttk.Button(toolbar, text="Run (F5)", command=self.run_code)
         self.run_btn.pack(side=tk.RIGHT, padx=(4, 0))
-        ttk.Button(toolbar, text="Zapisz", command=self.save_file).pack(side=tk.RIGHT, padx=(4, 0))
-        ttk.Button(toolbar, text="Otworz", command=self.open_file).pack(side=tk.RIGHT, padx=(4, 0))
-        ttk.Button(toolbar, text="Wyczysc", command=self.clear_output).pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(toolbar, text="Save", command=self.save_file).pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(toolbar, text="Open", command=self.open_file).pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(toolbar, text="Clear", command=self.clear_output).pack(side=tk.RIGHT, padx=(4, 0))
 
         paned = ttk.PanedWindow(self, orient=tk.VERTICAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
-        # Edytor
+        # Editor
         editor_frame = ttk.Frame(paned)
         paned.add(editor_frame, weight=3)
 
@@ -1320,7 +1320,7 @@ class PythonPanel(ttk.Frame):
         self.editor.bind("<KeyRelease>", self._on_key_release)
         self.editor.bind("<MouseWheel>", self._sync_scroll)
 
-        # Tagi kolorowania
+        # Syntax highlighting tags
         self.editor.tag_configure("keyword", foreground="#cba6f7")
         self.editor.tag_configure("string", foreground="#a6e3a1")
         self.editor.tag_configure("comment", foreground="#6c7086")
@@ -1329,7 +1329,7 @@ class PythonPanel(ttk.Frame):
         self.editor.tag_configure("decorator", foreground="#f9e2af")
 
         # Output
-        output_frame = ttk.LabelFrame(paned, text="Wynik")
+        output_frame = ttk.LabelFrame(paned, text="Output")
         paned.add(output_frame, weight=1)
 
         self.output = scrolledtext.ScrolledText(
@@ -1351,7 +1351,7 @@ class PythonPanel(ttk.Frame):
             with open(demo_path, "r") as f:
                 self.editor.insert("1.0", f.read())
         else:
-            self.editor.insert("1.0", '# Wpisz swoj kod Python tutaj\nprint("Witaj!")\n')
+            self.editor.insert("1.0", '# Type your Python code here\nprint("Hello!")\n')
 
     def _on_key_release(self, event=None):
         self._update_line_numbers()
@@ -1400,7 +1400,7 @@ class PythonPanel(ttk.Frame):
             return
         self.run_btn.configure(state=tk.DISABLED)
         self.clear_output()
-        self._append_output("Uruchamiam...\n", "success")
+        self._append_output("Running...\n", "success")
         self._output_queue = queue.Queue()
         self._running = True
         self._poll_output()
@@ -1410,7 +1410,7 @@ class PythonPanel(ttk.Frame):
         project_dir = os.path.dirname(os.path.abspath(__file__))
         if project_dir not in sys.path:
             sys.path.insert(0, project_dir)
-        # Dodaj venv do path
+        # Add venv to path
         venv_sp = os.path.join(project_dir, ".venv", "lib")
         if os.path.isdir(venv_sp):
             import glob as g
@@ -1457,7 +1457,7 @@ class PythonPanel(ttk.Frame):
         self.output.configure(state=tk.DISABLED)
 
     def open_file(self):
-        path = filedialog.askopenfilename(filetypes=[("Python", "*.py"), ("Wszystkie", "*.*")])
+        path = filedialog.askopenfilename(filetypes=[("Python", "*.py"), ("All", "*.*")])
         if path:
             with open(path, "r") as f:
                 self.editor.delete("1.0", tk.END)
@@ -1466,20 +1466,20 @@ class PythonPanel(ttk.Frame):
             self._highlight_syntax()
 
     def save_file(self):
-        path = filedialog.asksaveasfilename(defaultextension=".py", filetypes=[("Python", "*.py"), ("Wszystkie", "*.*")])
+        path = filedialog.asksaveasfilename(defaultextension=".py", filetypes=[("Python", "*.py"), ("All", "*.*")])
         if path:
             with open(path, "w") as f:
                 f.write(self.editor.get("1.0", tk.END))
 
     def insert_text(self, text):
-        """Wstaw tekst na koncu edytora."""
+        """Insert text at the end of the editor."""
         self.editor.insert(tk.END, text)
         self._update_line_numbers()
         self._highlight_syntax()
 
 
 # ============================================================
-#  Aplikacja glowna
+#  Main application
 # ============================================================
 
 class App(tk.Tk):
@@ -1490,11 +1490,11 @@ class App(tk.Tk):
         self.geometry("1500x850")
         self.minsize(1000, 550)
 
-        # ConfigManager - domyslna sciezka obok skryptow
+        # ConfigManager - default path next to scripts
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
         self._config_manager = ConfigManager(config_path)
 
-        # Ciemny motyw
+        # Dark theme
         self.configure(bg="#1e1e2e")
         style = ttk.Style()
         style.theme_use("clam")
@@ -1517,14 +1517,14 @@ class App(tk.Tk):
                           activeforeground="#cdd6f4")
         file_menu = tk.Menu(menubar, tearoff=0, bg="#313244", fg="#cdd6f4",
                             activebackground="#45475a", activeforeground="#cdd6f4")
-        file_menu.add_command(label="Zapisz konfiguracje", command=self._save_config,
+        file_menu.add_command(label="Save configuration", command=self._save_config,
                               accelerator="Ctrl+Shift+S")
-        file_menu.add_command(label="Wczytaj konfiguracje", command=self._load_config,
+        file_menu.add_command(label="Load configuration", command=self._load_config,
                               accelerator="Ctrl+Shift+L")
         file_menu.add_separator()
-        file_menu.add_command(label="Zapisz konfiguracje jako...", command=self._save_config_as)
-        file_menu.add_command(label="Wczytaj konfiguracje z...", command=self._load_config_from)
-        menubar.add_cascade(label="Plik", menu=file_menu)
+        file_menu.add_command(label="Save configuration as...", command=self._save_config_as)
+        file_menu.add_command(label="Load configuration from...", command=self._load_config_from)
+        menubar.add_cascade(label="File", menu=file_menu)
         self.config(menu=menubar)
 
         # Layout
@@ -1537,13 +1537,13 @@ class App(tk.Tk):
         self.python_panel = PythonPanel(paned)
         paned.add(self.python_panel, weight=1)
 
-        # Scheduler potrzebuje referencji do PythonPanel (pobranie kodu z edytora)
+        # Scheduler needs a reference to PythonPanel (to get code from editor)
         self.left_panel.init_scheduler(self.python_panel)
 
-        # Obsluga "Wstaw do edytora" ze Scrapera
+        # Handle "Insert into editor" from Scraper
         self.left_panel.scraper_tab.bind("<<InsertToEditor>>", self._on_insert_to_editor)
 
-        # Skroty
+        # Shortcuts
         self.bind("<F5>", lambda e: self.python_panel.run_code())
         self.bind("<Control-s>", lambda e: self.python_panel.save_file())
         self.bind("<Control-o>", lambda e: self.python_panel.open_file())
@@ -1552,7 +1552,7 @@ class App(tk.Tk):
 
         self.left_panel.claude_tab.input_entry.focus_set()
 
-        # Auto-load config.json jesli istnieje
+        # Auto-load config.json if it exists
         if os.path.exists(config_path):
             self._load_config(silent=True)
 
@@ -1563,50 +1563,50 @@ class App(tk.Tk):
             self.python_panel.insert_text(f"\n\n{commented}\n")
 
     def _save_config(self):
-        """Zapisz biezace ustawienia do config.json."""
+        """Save current settings to config.json."""
         cm = self._config_manager
         self.left_panel.context_tab.save_to_config(cm)
         self.left_panel.discord_tab.save_to_config(cm)
         self.left_panel.scheduler_tab.save_to_config(cm)
-        messagebox.showinfo("Konfiguracja", f"Zapisano do: {cm.path}")
+        messagebox.showinfo("Configuration", f"Saved to: {cm.path}")
 
     def _load_config(self, silent: bool = False):
-        """Wczytaj ustawienia z config.json."""
+        """Load settings from config.json."""
         cm = self._config_manager
         if not os.path.exists(cm.path):
             if not silent:
-                messagebox.showwarning("Konfiguracja", f"Plik nie istnieje: {cm.path}")
+                messagebox.showwarning("Configuration", f"File does not exist: {cm.path}")
             return
         self.left_panel.context_tab.load_from_config(cm)
         self.left_panel.discord_tab.load_from_config(cm)
         self.left_panel.scheduler_tab.load_from_config(cm)
         if not silent:
-            messagebox.showinfo("Konfiguracja", f"Wczytano z: {cm.path}")
+            messagebox.showinfo("Configuration", f"Loaded from: {cm.path}")
 
     def _save_config_as(self):
-        """Zapisz konfiguracje do wybranego pliku."""
+        """Save configuration to a chosen file."""
         path = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("JSON", "*.json"), ("Wszystkie", "*.*")],
+            filetypes=[("JSON", "*.json"), ("All", "*.*")],
         )
         if path:
             cm = ConfigManager(path)
             self.left_panel.context_tab.save_to_config(cm)
             self.left_panel.discord_tab.save_to_config(cm)
             self.left_panel.scheduler_tab.save_to_config(cm)
-            messagebox.showinfo("Konfiguracja", f"Zapisano do: {path}")
+            messagebox.showinfo("Configuration", f"Saved to: {path}")
 
     def _load_config_from(self):
-        """Wczytaj konfiguracje z wybranego pliku."""
+        """Load configuration from a chosen file."""
         path = filedialog.askopenfilename(
-            filetypes=[("JSON", "*.json"), ("Wszystkie", "*.*")],
+            filetypes=[("JSON", "*.json"), ("All", "*.*")],
         )
         if path:
             cm = ConfigManager(path)
             self.left_panel.context_tab.load_from_config(cm)
             self.left_panel.discord_tab.load_from_config(cm)
             self.left_panel.scheduler_tab.load_from_config(cm)
-            messagebox.showinfo("Konfiguracja", f"Wczytano z: {path}")
+            messagebox.showinfo("Configuration", f"Loaded from: {path}")
 
 
 def main():

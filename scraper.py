@@ -1,9 +1,9 @@
-"""Lokalny web scraper oparty na Crawl4AI.
+"""Local web scraper based on Crawl4AI.
 
-Dziala w 100% na Twoim komputerze - bez API keys, bez tokenow,
-bez zadnych platnych uslug. Uzywa przegladarki Chromium przez Playwright.
+Runs 100% on your machine - no API keys, no tokens,
+no paid services. Uses Chromium browser via Playwright.
 
-Wymaga:
+Requirements:
     pip install crawl4ai
     crawl4ai-setup
 """
@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlparse
 
 @dataclass
 class ScrapeResult:
-    """Wynik scrapowania strony."""
+    """Result of scraping a page."""
     url: str
     markdown: str = ""
     title: str = ""
@@ -29,23 +29,23 @@ class ScrapeResult:
 
     def __str__(self):
         if self.is_error:
-            return f"[Blad: {self.error_msg}]"
+            return f"[Error: {self.error_msg}]"
         return self.markdown[:500] + "..." if len(self.markdown) > 500 else self.markdown
 
     @property
     def summary(self) -> str:
         return (
             f"URL: {self.url}\n"
-            f"Tytul: {self.title}\n"
-            f"Rozmiar: {len(self.markdown)} znakow\n"
-            f"Linki: {len(self.links)}\n"
-            f"Czas: {self.elapsed_sec:.1f}s"
+            f"Title: {self.title}\n"
+            f"Size: {len(self.markdown)} chars\n"
+            f"Links: {len(self.links)}\n"
+            f"Time: {self.elapsed_sec:.1f}s"
         )
 
 
 @dataclass
 class CrawlResult:
-    """Wynik crawlowania wielu stron."""
+    """Result of crawling multiple pages."""
     start_url: str
     pages: list[ScrapeResult] = field(default_factory=list)
     is_error: bool = False
@@ -53,12 +53,12 @@ class CrawlResult:
 
     def __str__(self):
         if self.is_error:
-            return f"[Blad: {self.error_msg}]"
-        return f"Crawl {self.start_url}: {len(self.pages)} stron"
+            return f"[Error: {self.error_msg}]"
+        return f"Crawl {self.start_url}: {len(self.pages)} pages"
 
 
 def _get_event_loop():
-    """Pobierz lub stworz event loop (bezpieczne z tkinter)."""
+    """Get or create event loop (safe with tkinter)."""
     try:
         loop = asyncio.get_running_loop()
         return loop
@@ -69,9 +69,9 @@ def _get_event_loop():
 
 
 class Scraper:
-    """Lokalny web scraper - bez API keys, dziala na Twoim komputerze.
+    """Local web scraper - no API keys, runs on your machine.
 
-    Przyklad:
+    Example:
         scraper = Scraper()
         page = scraper.scrape("https://example.com")
         print(page.markdown)
@@ -92,7 +92,7 @@ class Scraper:
 
     @property
     def is_configured(self) -> bool:
-        """Zawsze True - nie wymaga konfiguracji."""
+        """Always True - no configuration required."""
         return True
 
     def _emit(self, msg: str):
@@ -100,7 +100,7 @@ class Scraper:
             self.on_status(msg)
 
     # ------------------------------------------------------------------ #
-    #  Scrape - pojedyncza strona
+    #  Scrape - single page
     # ------------------------------------------------------------------ #
 
     def scrape(
@@ -109,8 +109,8 @@ class Scraper:
         wait_for: Optional[str] = None,
         timeout: int = 30000,
     ) -> ScrapeResult:
-        """Scrapuj pojedyncza strone. Zwraca markdown."""
-        self._emit(f"Scrapuje {url}...")
+        """Scrape a single page. Returns markdown."""
+        self._emit(f"Scraping {url}...")
         import time
         t0 = time.time()
 
@@ -135,7 +135,7 @@ class Scraper:
                 return ScrapeResult(
                     url=url,
                     is_error=True,
-                    error_msg=result.error_message or "Nieznany blad",
+                    error_msg=result.error_message or "Unknown error",
                     elapsed_sec=elapsed,
                 )
 
@@ -168,7 +168,7 @@ class Scraper:
             )
 
     # ------------------------------------------------------------------ #
-    #  Multi-scrape - wiele stron
+    #  Multi-scrape - multiple pages
     # ------------------------------------------------------------------ #
 
     def scrape_many(
@@ -176,8 +176,8 @@ class Scraper:
         urls: list[str],
         timeout: int = 30000,
     ) -> list[ScrapeResult]:
-        """Scrapuj wiele stron na raz (rownolegle w jednej sesji przegladarki)."""
-        self._emit(f"Scrapuje {len(urls)} stron...")
+        """Scrape multiple pages at once (parallel in a single browser session)."""
+        self._emit(f"Scraping {len(urls)} pages...")
         import time
         t0 = time.time()
 
@@ -209,14 +209,14 @@ class Scraper:
                     scrape_results.append(ScrapeResult(
                         url=r.url,
                         is_error=True,
-                        error_msg=r.error_message or "Blad",
+                        error_msg=r.error_message or "Error",
                     ))
             return scrape_results
         except Exception as e:
             return [ScrapeResult(url=u, is_error=True, error_msg=str(e)) for u in urls]
 
     # ------------------------------------------------------------------ #
-    #  Map - odkryj linki na stronie
+    #  Map - discover links on a page
     # ------------------------------------------------------------------ #
 
     def map_site(
@@ -224,8 +224,8 @@ class Scraper:
         url: str,
         max_depth: int = 1,
     ) -> list[str]:
-        """Odkryj wszystkie linki na stronie (do max_depth poziomu)."""
-        self._emit(f"Mapuje linki na {url}...")
+        """Discover all links on a page (up to max_depth levels)."""
+        self._emit(f"Mapping links on {url}...")
 
         visited = set()
         to_visit = [url]
@@ -235,7 +235,7 @@ class Scraper:
         for depth in range(max_depth + 1):
             if not to_visit:
                 break
-            self._emit(f"  Glebokosc {depth}: {len(to_visit)} stron...")
+            self._emit(f"  Depth {depth}: {len(to_visit)} pages...")
             results = self.scrape_many(to_visit) if len(to_visit) > 1 else [self.scrape(to_visit[0])]
 
             next_level = []
@@ -255,11 +255,11 @@ class Scraper:
         return all_urls
 
     # ------------------------------------------------------------------ #
-    #  Async wrappers (do GUI)
+    #  Async wrappers (for GUI)
     # ------------------------------------------------------------------ #
 
     def scrape_async(self, url: str, callback: Callable[[ScrapeResult], None], **kwargs):
-        """Scrapuj asynchronicznie. Wynik przez callback."""
+        """Scrape asynchronously. Result via callback."""
         if self._busy:
             return
         self._busy = True

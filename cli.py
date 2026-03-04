@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Claude Code IDE - Runner konsolowy.
+Claude Code IDE - Console runner.
 
-Uruchomienie:
+Usage:
     python3 cli.py                          # Scheduler loop (daemon)
-    python3 cli.py --run script.py          # Jednorazowe wykonanie pliku
-    python3 cli.py --config /path/config.json  # Z innym plikiem konfiguracji
+    python3 cli.py --run script.py          # One-time file execution
+    python3 cli.py --config /path/config.json  # With a different config file
 """
 
 import argparse
@@ -26,13 +26,13 @@ from claude_code import ClaudeCode
 
 
 # ============================================================
-#  Logging z prefiksami
+#  Logging with prefixes
 # ============================================================
 
 def log(tag: str, msg: str):
-    """Wypisz sformatowana linie: [HH:MM:SS] [TAG] msg"""
+    """Print a formatted line: [HH:MM:SS] [TAG] msg"""
     ts = datetime.now().strftime("%H:%M:%S")
-    # Wyrownaj tag do 10 znakow
+    # Align tag to 10 characters
     print(f"[{ts}] [{tag:<10}] {msg}", flush=True)
 
 
@@ -41,7 +41,7 @@ def log(tag: str, msg: str):
 # ============================================================
 
 def make_context_hook(ctx_cfg: dict):
-    """Tworzy message_hook na bazie konfiguracji context_keeper."""
+    """Create a message_hook based on context_keeper configuration."""
     if not ctx_cfg.get("active", False):
         return None
 
@@ -68,10 +68,10 @@ def make_context_hook(ctx_cfg: dict):
             prefix = prompt
             log("CONTEXT", f"Context injected (call #{n})")
         elif auto_every and n > 0:
-            prefix = f"[PRZYPOMNIENIE KONTEKSTU - wywolanie #{n}]\n\n{prompt}"
+            prefix = f"[CONTEXT REMINDER - call #{n}]\n\n{prompt}"
             log("CONTEXT", f"Context reminder (call #{n})")
         elif auto_remind and interval > 0 and n > 0 and n % interval == 0:
-            prefix = f"[PRZYPOMNIENIE KONTEKSTU POCZATKOWEGO - wywolanie #{n}]\n\n{prompt}"
+            prefix = f"[INITIAL CONTEXT REMINDER - call #{n}]\n\n{prompt}"
             log("CONTEXT", f"Periodic context reminder (call #{n}, every {interval})")
 
         if prefix:
@@ -82,11 +82,11 @@ def make_context_hook(ctx_cfg: dict):
 
 
 # ============================================================
-#  Wykonywanie kodu
+#  Code execution
 # ============================================================
 
 def execute_code(code: str, name: str, discord: DiscordNotifier = None) -> str:
-    """Wykonaj kod Python, wypisz output z prefiksem [SCHEDULER], powiadom Discord."""
+    """Execute Python code, print output with [SCHEDULER] prefix, notify Discord."""
     log("SCHEDULER", f'Job "{name}" started')
     start_time = time.time()
 
@@ -113,7 +113,7 @@ def execute_code(code: str, name: str, discord: DiscordNotifier = None) -> str:
     output = output_buf.getvalue()
     elapsed = time.time() - start_time
 
-    # Wypisz output linia po linii z prefiksem
+    # Print output line by line with prefix
     if output.strip():
         for line in output.rstrip("\n").split("\n"):
             log("SCHEDULER", f">>> {line}")
@@ -130,20 +130,20 @@ def execute_code(code: str, name: str, discord: DiscordNotifier = None) -> str:
 
 
 # ============================================================
-#  Scheduler - import klas z main.py bez GUI
+#  Scheduler - classes imported without GUI
 # ============================================================
 
 def _import_scheduler_classes():
-    """Importuj ScheduledJob i Scheduler z main.py - te klasy nie zaleza od tkinter."""
-    # Zamiast importowac caly main.py (ktory importuje tkinter),
-    # uzyj bezposrednich klas ktore sa niezalezne od GUI.
-    # Poniewaz ScheduledJob i Scheduler sa w main.py ale nie uzywaja tkinter,
-    # musimy je zaimportowac selektywnie lub zduplikowac.
-    # Najlepsze podejscie: zduplikuj minimalna wersje tu.
+    """Import ScheduledJob and Scheduler from main.py - these classes don't depend on tkinter."""
+    # Instead of importing all of main.py (which imports tkinter),
+    # use standalone classes that are GUI-independent.
+    # Since ScheduledJob and Scheduler are in main.py but don't use tkinter,
+    # we need to import them selectively or duplicate them.
+    # Best approach: duplicate minimal version here.
     pass
 
 
-# Minimalna kopia Scheduler i ScheduledJob (bez tkinter) do uzycia w CLI
+# Minimal copy of Scheduler and ScheduledJob (without tkinter) for CLI use
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -154,16 +154,16 @@ class ScheduledJob:
     code: str
     mode: str              # "once" | "daily" | "interval" | "weekly"
     time_str: str          # "14:30"
-    date_str: str          # "2026-03-15" (dla once)
-    interval_min: int      # minuty (dla interval)
-    weekdays: list         # 0=Pn..6=Nd (dla weekly)
+    date_str: str          # "2026-03-15" (for once)
+    interval_min: int      # minutes (for interval)
+    weekdays: list         # 0=Mon..6=Sun (for weekly)
     active: bool = True
     next_run: datetime = field(default_factory=datetime.now)
     last_run: datetime | None = None
 
 
 class Scheduler:
-    """Silnik harmonogramu - identyczny z main.py ale bez tkinter."""
+    """Schedule engine - identical to main.py but without tkinter."""
 
     def __init__(self):
         self.jobs: list[ScheduledJob] = []
@@ -244,11 +244,11 @@ class Scheduler:
 
 
 # ============================================================
-#  Ladowanie jobow z konfiguracji
+#  Loading jobs from configuration
 # ============================================================
 
 def load_jobs_from_config(cfg: dict) -> list[ScheduledJob]:
-    """Utworz liste ScheduledJob z konfiguracji JSON."""
+    """Create list of ScheduledJob from JSON configuration."""
     jobs = []
     for jd in cfg.get("scheduler_jobs", []):
         job = ScheduledJob(
@@ -266,11 +266,11 @@ def load_jobs_from_config(cfg: dict) -> list[ScheduledJob]:
 
 
 # ============================================================
-#  Claude traffic listener (konsola)
+#  Claude traffic listener (console)
 # ============================================================
 
 def make_traffic_listener(discord: DiscordNotifier = None, notify_claude: bool = False):
-    """Tworzy traffic listener ktory loguje do konsoli."""
+    """Create a traffic listener that logs to console."""
     def listener(direction: str, text: str, meta: dict):
         if direction == "send":
             preview = text[:200].replace("\n", " ")
@@ -301,25 +301,25 @@ def make_traffic_listener(discord: DiscordNotifier = None, notify_claude: bool =
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Claude Code IDE - runner konsolowy",
+        description="Claude Code IDE - console runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Przyklady:
+        epilog="""Examples:
   python3 cli.py                             # Scheduler loop
-  python3 cli.py --run script.py             # Jednorazowe uruchomienie
-  python3 cli.py --config ~/myconfig.json    # Z innym plikiem konfiguracji
+  python3 cli.py --run script.py             # One-time execution
+  python3 cli.py --config ~/myconfig.json    # With a different config file
 """,
     )
     parser.add_argument("--config", default="config.json",
-                        help="Sciezka do pliku konfiguracji (domyslnie: config.json)")
+                        help="Path to config file (default: config.json)")
     parser.add_argument("--run", metavar="FILE",
-                        help="Uruchom plik .py i zakoncz (bez schedulera)")
+                        help="Run a .py file and exit (no scheduler)")
     args = parser.parse_args()
 
-    # Wczytaj konfiguracje
+    # Load configuration
     config_path = args.config
     if not os.path.exists(config_path):
-        log("SYSTEM", f"config.json nie znaleziony w: {os.path.abspath(config_path)}")
-        log("SYSTEM", "Uzyto domyslnej konfiguracji. Utworz config.json w katalogu projektu lub uzyj --config.")
+        log("SYSTEM", f"config.json not found at: {os.path.abspath(config_path)}")
+        log("SYSTEM", "Using default configuration. Create config.json in project directory or use --config.")
 
     cm = ConfigManager(config_path)
     cfg = cm.load()
@@ -355,7 +355,7 @@ def main():
     listener = make_traffic_listener(discord, notify_claude)
     ClaudeCode.add_traffic_listener(listener)
 
-    # === Tryb: jednorazowe uruchomienie ===
+    # === Mode: one-time execution ===
     if args.run:
         if not os.path.exists(args.run):
             log("SYSTEM", f"File not found: {args.run}")
@@ -367,7 +367,7 @@ def main():
         log("SYSTEM", "Done.")
         return
 
-    # === Tryb: scheduler loop ===
+    # === Mode: scheduler loop ===
     jobs = load_jobs_from_config(cfg)
     scheduler = Scheduler()
 
@@ -383,7 +383,7 @@ def main():
     active_count = sum(1 for j in scheduler.jobs if j.active)
     log("SCHEDULER", f"{active_count} active job(s). Starting tick loop... (Ctrl+C to stop)")
 
-    # Obsluga Ctrl+C
+    # Handle Ctrl+C
     running = True
 
     def signal_handler(sig, frame):
@@ -394,12 +394,12 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Glowna petla
+    # Main loop
     while running:
         due = scheduler.get_due_jobs()
         for job in due:
             scheduler.mark_run(job)
-            # Uruchom w osobnym watku
+            # Run in separate thread
             notify_sched = discord_cfg.get("notify_scheduler", False)
             d = discord if notify_sched else None
             threading.Thread(
@@ -408,7 +408,7 @@ def main():
                 daemon=True,
             ).start()
 
-        # Wyswietl nastepny zaplanowany czas co 60s
+        # Display next scheduled time every 60s
         try:
             time.sleep(1)
         except (KeyboardInterrupt, SystemExit):

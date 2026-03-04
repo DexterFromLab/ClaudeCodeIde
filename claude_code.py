@@ -1,4 +1,4 @@
-"""Klasa ClaudeCode do komunikacji z Claude Code CLI."""
+"""ClaudeCode class for communicating with the Claude Code CLI."""
 
 import json
 import subprocess
@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 @dataclass
 class ClaudeResponse:
-    """Odpowiedz od Claude Code."""
+    """Response from Claude Code."""
     text: str
     raw_json: Optional[dict] = None
     session_id: Optional[str] = None
@@ -24,32 +24,32 @@ class ClaudeResponse:
 
 
 class ClaudeCode:
-    """Interfejs do komunikacji z Claude Code przez CLI.
+    """Interface for communicating with Claude Code via CLI.
 
-    Przyklad uzycia:
+    Example:
         claude = ClaudeCode()
-        odpowiedz = claude.ask("Napisz funkcje sortujaca")
-        print(odpowiedz.text)
+        response = claude.ask("Write a sorting function")
+        print(response.text)
     """
 
-    # Globalny listener ruchu - kazda instancja ClaudeCode raportuje tu komunikacje
+    # Global traffic listener - every ClaudeCode instance reports here
     _traffic_listeners: list[Callable] = []
-    # Globalny hook na wiadomosci - pozwala wstrzykiwac kontekst do kazdego ask()
+    # Global message hook - allows injecting context into every ask()
     _message_hook: Optional[Callable[[str], str]] = None
 
     @classmethod
     def add_traffic_listener(cls, listener: Callable):
-        """Dodaj globalny listener ruchu. Callback: listener(direction, text, meta).
+        """Add a global traffic listener. Callback: listener(direction, text, meta).
         direction: 'send' | 'recv' | 'error'
-        text: tresc promptu lub odpowiedzi
-        meta: dict z dodatkowymi info (source, model, cost, etc.)
+        text: prompt or response content
+        meta: dict with additional info (source, model, cost, etc.)
         """
         cls._traffic_listeners.append(listener)
 
     @classmethod
     def set_message_hook(cls, hook: Optional[Callable[[str], str]]):
-        """Ustaw hook przetwarzajacy kazdy message przed wyslaniem.
-        hook(message) -> zmodyfikowany message
+        """Set a hook that processes every message before sending.
+        hook(message) -> modified message
         """
         cls._message_hook = hook
 
@@ -97,7 +97,7 @@ class ClaudeCode:
         return list(self._history)
 
     # ------------------------------------------------------------------ #
-    #  Budowanie komendy CLI
+    #  Building CLI command
     # ------------------------------------------------------------------ #
 
     def _build_cmd(
@@ -145,7 +145,7 @@ class ClaudeCode:
         return cmd
 
     def _parse_json_response(self, stdout: str) -> ClaudeResponse:
-        """Parsuj odpowiedz JSON z claude CLI."""
+        """Parse JSON response from claude CLI."""
         try:
             data = json.loads(stdout)
             text = data.get("result", stdout)
@@ -161,7 +161,7 @@ class ClaudeCode:
             return ClaudeResponse(text=stdout.strip())
 
     def _run_subprocess(self, cmd: list[str]) -> ClaudeResponse:
-        """Uruchom subprocess i zwroc ClaudeResponse."""
+        """Run subprocess and return ClaudeResponse."""
         try:
             result = subprocess.run(
                 cmd,
@@ -181,24 +181,24 @@ class ClaudeCode:
             return response
         except subprocess.TimeoutExpired:
             return ClaudeResponse(
-                text=f"[Timeout po {self.timeout}s]",
+                text=f"[Timeout after {self.timeout}s]",
                 is_error=True,
             )
         except FileNotFoundError:
             return ClaudeResponse(
-                text="[Nie znaleziono komendy 'claude'. Zainstaluj Claude Code CLI.]",
+                text="[Command 'claude' not found. Install Claude Code CLI.]",
                 is_error=True,
             )
         except Exception as e:
-            return ClaudeResponse(text=f"[Blad: {e}]", is_error=True)
+            return ClaudeResponse(text=f"[Error: {e}]", is_error=True)
 
     # ------------------------------------------------------------------ #
-    #  API synchroniczne
+    #  Synchronous API
     # ------------------------------------------------------------------ #
 
     def ask(self, message: str, **kwargs) -> ClaudeResponse:
-        """Wyslij pytanie synchronicznie. Zwraca ClaudeResponse."""
-        # Message hook - pozwala Context Keeper wstrzykiwac kontekst
+        """Send a question synchronously. Returns ClaudeResponse."""
+        # Message hook - allows Context Keeper to inject context
         if ClaudeCode._message_hook:
             message = ClaudeCode._message_hook(message)
         self._notify_traffic("send", message, {
@@ -221,49 +221,49 @@ class ClaudeCode:
         return response
 
     def chat(self, message: str, **kwargs) -> ClaudeResponse:
-        """Jak ask(), ale automatycznie kontynuuje sesje (pamiec kontekstu)."""
+        """Like ask(), but automatically continues the session (context memory)."""
         kwargs.setdefault("continue_session", True)
         return self.ask(message, **kwargs)
 
     def generate_code(self, prompt: str, language: str = "python", **kwargs) -> str:
-        """Wygeneruj kod w danym jezyku. Zwraca sam kod (bez markdown)."""
+        """Generate code in a given language. Returns only the code (no markdown)."""
         full_prompt = (
-            f"Wygeneruj TYLKO kod {language}, bez zadnych komentarzy, "
-            f"bez blokow markdown, bez wyjasnien. Samo czysty kod:\n\n{prompt}"
+            f"Generate ONLY {language} code, no comments, "
+            f"no markdown blocks, no explanations. Just clean code:\n\n{prompt}"
         )
-        kwargs.setdefault("system_prompt", "Jestes generatorem kodu. Zwracasz TYLKO kod, bez formatowania markdown.")
+        kwargs.setdefault("system_prompt", "You are a code generator. Return ONLY code, without markdown formatting.")
         resp = self.ask(full_prompt, **kwargs)
         code = resp.text.strip()
-        # Usun bloki markdown jesli Claude i tak je dodal
+        # Remove markdown blocks if Claude added them anyway
         if code.startswith("```"):
             lines = code.split("\n")
-            lines = lines[1:]  # usun ```python
+            lines = lines[1:]  # remove ```python
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             code = "\n".join(lines)
         return code
 
     def review_code(self, code: str, **kwargs) -> ClaudeResponse:
-        """Przeslij kod do code review."""
+        """Submit code for review."""
         prompt = (
-            "Zrob code review ponizszego kodu. Wskazywaj:\n"
-            "- Bledy i bugi\n"
-            "- Problemy z wydajnoscia\n"
-            "- Naruszenia dobrych praktyk\n"
-            "- Sugestie poprawek\n\n"
+            "Review the following code. Point out:\n"
+            "- Bugs and errors\n"
+            "- Performance issues\n"
+            "- Best practice violations\n"
+            "- Improvement suggestions\n\n"
             f"```python\n{code}\n```"
         )
         return self.ask(prompt, **kwargs)
 
     def fix_code(self, code: str, error: str, **kwargs) -> str:
-        """Napraw kod na podstawie bledu. Zwraca poprawiony kod."""
+        """Fix code based on an error. Returns the corrected code."""
         prompt = (
-            f"Ponizszy kod Python zwraca blad. Napraw go i zwroc TYLKO poprawiony kod, "
-            f"bez wyjasnien, bez markdown.\n\n"
-            f"KOD:\n{code}\n\n"
-            f"BLAD:\n{error}"
+            f"The following Python code produces an error. Fix it and return ONLY the corrected code, "
+            f"no explanations, no markdown.\n\n"
+            f"CODE:\n{code}\n\n"
+            f"ERROR:\n{error}"
         )
-        kwargs.setdefault("system_prompt", "Naprawiasz kod. Zwracasz TYLKO poprawiony kod, bez formatowania markdown.")
+        kwargs.setdefault("system_prompt", "You fix code. Return ONLY the corrected code, without markdown formatting.")
         resp = self.ask(prompt, **kwargs)
         fixed = resp.text.strip()
         if fixed.startswith("```"):
@@ -275,12 +275,12 @@ class ClaudeCode:
         return fixed
 
     def explain_code(self, code: str, **kwargs) -> ClaudeResponse:
-        """Wyjasni co robi dany kod."""
-        prompt = f"Wyjasni krok po kroku co robi ponizszy kod:\n\n```python\n{code}\n```"
+        """Explain what a piece of code does."""
+        prompt = f"Explain step by step what the following code does:\n\n```python\n{code}\n```"
         return self.ask(prompt, **kwargs)
 
     def ask_structured(self, message: str, schema: dict, **kwargs) -> dict:
-        """Zadaj pytanie i uzyskaj odpowiedz w formacie JSON wg schematu."""
+        """Ask a question and get a JSON-formatted response matching the schema."""
         resp = self.ask(message, json_schema=schema, **kwargs)
         if resp.raw_json and "result" in resp.raw_json:
             try:
@@ -293,16 +293,16 @@ class ClaudeCode:
             return {"raw_text": resp.text}
 
     def new_session(self):
-        """Zacznij nowa sesje (wyczysc ID sesji i historie)."""
+        """Start a new session (clear session ID and history)."""
         self._session_id = None
         self._history.clear()
 
     # ------------------------------------------------------------------ #
-    #  API asynchroniczne (callback)
+    #  Asynchronous API (callback)
     # ------------------------------------------------------------------ #
 
     def send(self, message: str, **kwargs):
-        """Wyslij wiadomosc asynchronicznie (w watku). Wynik przez on_response callback."""
+        """Send message asynchronously (in a thread). Result via on_response callback."""
         if self._busy:
             return
         self._busy = True
@@ -312,7 +312,7 @@ class ClaudeCode:
         thread.start()
 
     def send_chat(self, message: str, **kwargs):
-        """Jak send(), ale kontynuuje sesje."""
+        """Like send(), but continues the session."""
         kwargs.setdefault("continue_session", True)
         self.send(message, **kwargs)
 
@@ -333,11 +333,11 @@ class ClaudeCode:
             self._busy = False
 
     # ------------------------------------------------------------------ #
-    #  Narzedzia pomocnicze
+    #  Utility methods
     # ------------------------------------------------------------------ #
 
     def batch(self, prompts: list[str], **kwargs) -> list[ClaudeResponse]:
-        """Wykonaj liste promptow sekwencyjnie. Zwraca liste odpowiedzi."""
+        """Execute a list of prompts sequentially. Returns list of responses."""
         results = []
         for prompt in prompts:
             results.append(self.ask(prompt, **kwargs))
@@ -346,7 +346,7 @@ class ClaudeCode:
     def batch_parallel(
         self, prompts: list[str], max_workers: int = 3, **kwargs
     ) -> list[ClaudeResponse]:
-        """Wykonaj liste promptow rownolegle (max_workers na raz)."""
+        """Execute a list of prompts in parallel (max_workers at a time)."""
         from concurrent.futures import ThreadPoolExecutor
 
         def run_one(prompt):
@@ -358,13 +358,13 @@ class ClaudeCode:
         return results
 
     def pipe(self, code: str, instruction: str, iterations: int = 1, **kwargs) -> str:
-        """Iteracyjnie przetwarzaj kod wg instrukcji (np. refaktoryzacja w krokach)."""
+        """Iteratively process code according to instructions (e.g., step-by-step refactoring)."""
         current = code
         for i in range(iterations):
-            prompt = f"{instruction}\n\nAktualny kod:\n```python\n{current}\n```\n\nZwroc TYLKO poprawiony kod."
+            prompt = f"{instruction}\n\nCurrent code:\n```python\n{current}\n```\n\nReturn ONLY the modified code."
             kwargs_copy = dict(kwargs)
             kwargs_copy.setdefault(
-                "system_prompt", "Modyfikujesz kod wg instrukcji. Zwracasz TYLKO kod bez markdown."
+                "system_prompt", "You modify code according to instructions. Return ONLY code without markdown."
             )
             resp = self.ask(prompt, **kwargs_copy)
             result = resp.text.strip()
@@ -377,29 +377,29 @@ class ClaudeCode:
         return current
 
     # ------------------------------------------------------------------ #
-    #  Integracja ze Scraperem (Crawl4AI - 100% lokalne)
+    #  Scraper integration (Crawl4AI - 100% local)
     # ------------------------------------------------------------------ #
 
     def scrape_and_ask(self, url: str, question: str, **kwargs) -> ClaudeResponse:
-        """Scrapuj strone lokalnie i zadaj pytanie Claude o jej tresc."""
+        """Scrape a page locally and ask Claude a question about its content."""
         from scraper import Scraper
         sc = Scraper()
         result = sc.scrape(url)
         if result.is_error:
-            return ClaudeResponse(text=f"[Blad scrapowania {url}: {result.error_msg}]", is_error=True)
+            return ClaudeResponse(text=f"[Scraping error {url}: {result.error_msg}]", is_error=True)
         prompt = (
-            f"Ponizej znajduje sie tresc strony {url}:\n\n"
+            f"Below is the content of the page {url}:\n\n"
             f"---\n{result.markdown[:15000]}\n---\n\n"
-            f"Pytanie: {question}"
+            f"Question: {question}"
         )
         return self.ask(prompt, **kwargs)
 
     def scrape_and_summarize(self, url: str, **kwargs) -> ClaudeResponse:
-        """Scrapuj strone i stworz streszczenie."""
-        return self.scrape_and_ask(url, "Stworz zwiezle streszczenie tej strony po polsku.", **kwargs)
+        """Scrape a page and create a summary."""
+        return self.scrape_and_ask(url, "Create a concise summary of this page.", **kwargs)
 
     def scrape_many_and_ask(self, urls: list[str], question: str, **kwargs) -> ClaudeResponse:
-        """Scrapuj wiele stron i zadaj pytanie o ich tresc."""
+        """Scrape multiple pages and ask a question about their content."""
         from scraper import Scraper
         sc = Scraper()
         results = sc.scrape_many(urls)
@@ -408,13 +408,13 @@ class ClaudeCode:
         for r in results:
             if not r.is_error and r.markdown:
                 scraped_content.append(
-                    f"## Zrodlo: {r.title or r.url}\nURL: {r.url}\n\n"
+                    f"## Source: {r.title or r.url}\nURL: {r.url}\n\n"
                     f"{r.markdown[:5000]}\n"
                 )
 
         if not scraped_content:
-            return ClaudeResponse(text="[Nie udalo sie scrapowac zadnych stron]", is_error=True)
+            return ClaudeResponse(text="[Failed to scrape any pages]", is_error=True)
 
         all_content = "\n---\n".join(scraped_content)
-        prompt = f"{all_content}\n\n---\n\nPytanie: {question}"
+        prompt = f"{all_content}\n\n---\n\nQuestion: {question}"
         return self.ask(prompt, **kwargs)

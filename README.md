@@ -1,27 +1,27 @@
 # Claude Code IDE
 
-Desktopowe IDE do automatyzacji z wbudowanym Claude AI, scraperem stron i schedulerem zadań.
+Desktop IDE for automation with built-in Claude AI, web scraper, and task scheduler.
 
-Zbudowane w Pythonie (tkinter). Ciemny motyw, dwa panele: narzędzia po lewej, edytor Pythona po prawej.
+Built in Python (tkinter). Dark theme, two panels: tools on the left, Python editor on the right.
 
-## Funkcje
+## Features
 
-- **Claude** — czat z Claude Code CLI, podgląd pełnej komunikacji (prompty + odpowiedzi)
-- **Scraper** — scrapowanie stron przez Crawl4AI (lokalnie, bez API keys)
-- **Context Keeper** — automatyczne wstrzykiwanie kontekstu do każdego wywołania Claude
-- **Scheduler** — uruchamianie kodu z edytora wg harmonogramu (raz, codziennie, co N minut, dni tygodnia)
-- **Discord** — powiadomienia webhook (wyniki schedulera, odpowiedzi Claude)
-- **Edytor Python** — z podświetlaniem składni, konsolą wyjścia, F5 do uruchomienia
-- **CLI** — tryb konsolowy (`automate`) do uruchamiania skryptów i schedulera bez GUI
+- **Claude** — chat with Claude Code CLI, full communication view (prompts + responses)
+- **Scraper** — web scraping via Crawl4AI (local, no API keys)
+- **Context Keeper** — automatic context injection into every Claude call
+- **Scheduler** — run code from the editor on schedule (once, daily, every N minutes, weekdays)
+- **Discord** — webhook notifications (scheduler results, Claude responses)
+- **Python Editor** — with syntax highlighting, output console, F5 to run
+- **CLI** — console mode (`automate`) for running scripts and scheduler without GUI
 
-## Wymagania
+## Requirements
 
 - Python 3.10+
-- python3-venv (`sudo apt install python3-venv` na Debian/Ubuntu)
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) zainstalowane i skonfigurowane
-- tkinter (`sudo apt install python3-tk`) — wymagane tylko dla GUI
+- python3-venv (`sudo apt install python3-venv` on Debian/Ubuntu)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
+- tkinter (`sudo apt install python3-tk`) — required only for GUI
 
-## Instalacja
+## Installation
 
 ```bash
 git clone https://github.com/DexterFromLab/ClaudeCodeIde.git
@@ -29,24 +29,24 @@ cd ClaudeCodeIde
 bash install.sh
 ```
 
-Instalator (`install.sh`):
-- Nie wymaga sudo — instaluje per-user do `~/.local/`
-- Tworzy venv, instaluje zależności (Crawl4AI, Firecrawl), uruchamia `crawl4ai-setup`
-- Tworzy komendy `automate` i `automate-gui` w `~/.local/bin/`
-- Przy aktualizacji nadpisuje pliki .py, ale zachowuje istniejący `config.json`
+The installer (`install.sh`):
+- Requires no sudo — installs per-user to `~/.local/`
+- Creates a venv, installs dependencies (Crawl4AI, Firecrawl), runs `crawl4ai-setup`
+- Creates `automate` and `automate-gui` commands in `~/.local/bin/`
+- On update, overwrites .py files but preserves existing `config.json`
 
-Jeśli `~/.local/bin` nie jest w PATH, dodaj do `~/.bashrc`:
+If `~/.local/bin` is not in PATH, add to `~/.bashrc`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Deinstalacja
+## Uninstallation
 
 ```bash
 bash uninstall.sh
 ```
 
-## Użycie
+## Usage
 
 ### GUI
 
@@ -54,57 +54,56 @@ bash uninstall.sh
 automate-gui
 ```
 
-### CLI — jednorazowe uruchomienie skryptu
+### CLI — one-time script execution
 
 ```bash
-cd ~/twoj-projekt
-automate --run skrypt.py
+cd ~/your-project
+automate --run script.py
 ```
 
 ### CLI — scheduler (daemon)
 
 ```bash
-cd ~/twoj-projekt
+cd ~/your-project
 automate
 ```
 
-Scheduler czyta `config.json` z bieżącego katalogu. Możesz wskazać inny plik:
+The scheduler reads `config.json` from the current directory. You can specify a different file:
 
 ```bash
-automate --config ~/inny-projekt/config.json
+automate --config ~/other-project/config.json
 ```
 
-## Skróty klawiszowe (GUI)
+## Keyboard shortcuts (GUI)
 
-| Skrót | Akcja |
-|-------|-------|
-| `F5` | Uruchom kod z edytora |
-| `Ctrl+S` | Zapisz plik |
-| `Ctrl+O` | Otwórz plik |
+| Shortcut | Action |
+|----------|--------|
+| `F5` | Run code from editor |
+| `Ctrl+S` | Save file |
+| `Ctrl+O` | Open file |
 
-## Struktura plików
+## File structure
 
-| Plik | Opis |
-|------|------|
-| `main.py` | Główna aplikacja GUI |
-| `cli.py` | Runner konsolowy / scheduler |
-| `claude_code.py` | Wrapper Claude Code CLI (`ClaudeCode`, `ClaudeResponse`) |
-| `config_manager.py` | Zarządzanie konfiguracją JSON |
-| `scraper.py` | Lokalny scraper oparty na Crawl4AI |
-| `firecrawl_tool.py` | Opcjonalny scraper przez Firecrawl API |
-| `discord_notifier.py` | Powiadomienia Discord webhook |
-| `examples.py` | Przykłady użycia klasy `ClaudeCode` z poziomu Pythona |
-| `demo_code.py` | Przykładowy skrypt ładowany w edytorze |
-| `install.sh` | Instalator per-user |
-| `uninstall.sh` | Deinstalator |
+| File | Description |
+|------|-------------|
+| `main.py` | Main GUI application |
+| `cli.py` | Console runner / scheduler |
+| `claude_code.py` | Claude Code CLI wrapper (`ClaudeCode`, `ClaudeResponse`) |
+| `config_manager.py` | JSON configuration management |
+| `scraper.py` | Local scraper based on Crawl4AI |
+| `firecrawl_tool.py` | Optional scraper via Firecrawl API |
+| `discord_notifier.py` | Discord webhook notifications |
+| `demo_code.py` | Demo script loaded in the editor |
+| `install.sh` | Per-user installer |
+| `uninstall.sh` | Uninstaller |
 
-## Użycie z kodu
+## Usage from code
 
 ```python
 from claude_code import ClaudeCode
 
 claude = ClaudeCode()
-resp = claude.ask("Napisz funkcję sortującą")
+resp = claude.ask("Write a sorting function")
 print(resp.text)
 ```
 
@@ -118,6 +117,6 @@ print(page.markdown)
 
 ## Discord webhook
 
-1. Discord → Ustawienia kanału → Integracje → Webhook → Nowy → Kopiuj URL
-2. Wklej URL w zakładce Discord w IDE (lub w `config.json`)
-3. Kliknij "Test" (GUI) lub sprawdź logi CLI
+1. Discord → Channel Settings → Integrations → Webhook → New → Copy URL
+2. Paste the URL in the Discord tab in IDE (or in `config.json`)
+3. Click "Test" (GUI) or check CLI logs

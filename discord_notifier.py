@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DiscordNotifier - logika wysylania wiadomosci na Discord bez tkinter."""
+"""DiscordNotifier - send messages to Discord without tkinter dependency."""
 
 import json
 import threading
@@ -9,14 +9,14 @@ from datetime import datetime
 
 
 class DiscordNotifier:
-    """Wysyla wiadomosci na Discord przez webhook. Bez zaleznosci od tkinter."""
+    """Sends messages to Discord via webhook. No tkinter dependency."""
 
     def __init__(self, webhook_url: str, active: bool = True, on_log=None):
         """
         Args:
-            webhook_url: URL webhooka Discord.
-            active: Czy notyfikacje sa wlaczone.
-            on_log: Callback(msg, level) do logowania. level: "ok", "error", "info".
+            webhook_url: Discord webhook URL.
+            active: Whether notifications are enabled.
+            on_log: Callback(msg, level) for logging. level: "ok", "error", "info".
         """
         self.webhook_url = webhook_url
         self.active = active
@@ -26,19 +26,19 @@ class DiscordNotifier:
         self._on_log(msg, level)
 
     def send(self, text: str):
-        """Wyslij wiadomosc na Discord. Thread-safe, uruchamia watek w tle."""
+        """Send message to Discord. Thread-safe, runs in background thread."""
         if not self.active or not self.webhook_url:
             return
         threading.Thread(target=self._do_send, args=(text,), daemon=True).start()
 
     def send_sync(self, text: str):
-        """Wyslij wiadomosc synchronicznie (blokuje do zakonczenia)."""
+        """Send message synchronously (blocks until complete)."""
         if not self.active or not self.webhook_url:
             return
         self._do_send(text)
 
     def _do_send(self, text: str):
-        """Wysyla HTTP POST na webhook. Dzieli dlugie wiadomosci na chunki po 2000 znakow."""
+        """Send HTTP POST to webhook. Splits long messages into 2000-char chunks."""
         chunks = []
         while text:
             if len(text) <= 2000:
@@ -74,12 +74,12 @@ class DiscordNotifier:
                 self._log(f"Error: {e}", "error")
 
     def notify_scheduler(self, job_name: str, output: str):
-        """Powiadom o wyniku schedulera."""
+        """Notify about scheduler job result."""
         ts = datetime.now().strftime("%H:%M:%S")
         msg = f"**Scheduler [{job_name}] {ts}:**\n{output[:1900]}"
         self.send(msg)
 
     def notify_claude(self, text: str, model: str = ""):
-        """Powiadom o odpowiedzi Claude."""
+        """Notify about Claude response."""
         preview = text[:1900]
         self.send(f"**Claude{' (' + model + ')' if model else ''}:**\n{preview}")
