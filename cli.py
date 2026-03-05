@@ -229,14 +229,16 @@ class Scheduler:
                 h, m = map(int, job.time_str.split(":"))
             except ValueError:
                 h, m = 0, 0
-            for delta in range(1, 8):
-                candidate = now + timedelta(days=delta)
-                if candidate.weekday() in job.weekdays:
-                    return candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+            # Check today first
             if now.weekday() in job.weekdays:
                 target = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if target > now:
                     return target
+            # Then look at future days
+            for delta in range(1, 8):
+                candidate = now + timedelta(days=delta)
+                if candidate.weekday() in job.weekdays:
+                    return candidate.replace(hour=h, minute=m, second=0, microsecond=0)
             return now + timedelta(days=1)
 
         return now + timedelta(hours=1)
