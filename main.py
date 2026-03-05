@@ -19,6 +19,7 @@ from tkinter import ttk, scrolledtext, filedialog, messagebox
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from claude_code import ClaudeCode, ClaudeResponse
 from config_manager import ConfigManager
@@ -407,6 +408,7 @@ class ScheduledJob:
     date_str: str          # "2026-03-15" (for once)
     interval_min: int      # minutes (for interval)
     weekdays: list         # 0=Mon..6=Sun (for weekly)
+    timezone: str = ""     # e.g. "America/New_York" — times interpreted in this tz
     active: bool = True
     next_run: datetime = field(default_factory=datetime.now)
     last_run: datetime | None = None
@@ -451,6 +453,8 @@ class Scheduler:
 
     def _calculate_next_run(self, job: ScheduledJob) -> datetime:
         now = datetime.now()
+        tz = ZoneInfo(job.timezone) if job.timezone else None
+        ref_now = datetime.now(tz) if tz else now
 
         if job.mode == "once":
             try:
@@ -462,10 +466,10 @@ class Scheduler:
         elif job.mode == "daily":
             try:
                 h, m = map(int, job.time_str.split(":"))
-                target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if target <= now:
+                target = ref_now.replace(hour=h, minute=m, second=0, microsecond=0)
+                if target <= ref_now:
                     target += timedelta(days=1)
-                return target
+                return self._to_local(target, tz)
             except ValueError:
                 return now + timedelta(days=1)
 
@@ -480,18 +484,26 @@ class Scheduler:
             except ValueError:
                 h, m = 0, 0
             # Check today first
-            if now.weekday() in job.weekdays:
-                target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if target > now:
-                    return target
+            if ref_now.weekday() in job.weekdays:
+                target = ref_now.replace(hour=h, minute=m, second=0, microsecond=0)
+                if target > ref_now:
+                    return self._to_local(target, tz)
             # Then look at future days
             for delta in range(1, 8):
-                candidate = now + timedelta(days=delta)
+                candidate = ref_now + timedelta(days=delta)
                 if candidate.weekday() in job.weekdays:
-                    return candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+                    target = candidate.replace(hour=h, minute=m, second=0, microsecond=0)
+                    return self._to_local(target, tz)
             return now + timedelta(days=1)
 
         return now + timedelta(hours=1)
+
+    @staticmethod
+    def _to_local(dt: datetime, tz) -> datetime:
+        """Convert tz-aware datetime to local naive datetime, or pass through if no tz."""
+        if tz is None:
+            return dt
+        return dt.astimezone().replace(tzinfo=None)
 
     def next_scheduled(self) -> datetime | None:
         active = [j for j in self.jobs if j.active]
@@ -912,6 +924,7 @@ class SchedulerTab(ttk.Frame):
                 date_str=jd.get("date_str", ""),
                 interval_min=jd.get("interval_min", 30),
                 weekdays=jd.get("weekdays", []),
+                timezone=jd.get("timezone", ""),
                 active=jd.get("active", True),
             )
             self.scheduler.add_job(job)
